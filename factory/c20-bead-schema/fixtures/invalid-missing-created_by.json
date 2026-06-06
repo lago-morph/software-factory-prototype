@@ -1,0 +1,8 @@
+{
+  "$why_invalid": "E2: missing the required envelope field created_by (P9: 'every bead carries created_by').",
+  "id": "bd-anon-9004",
+  "type": "override",
+  "status": "closed",
+  "overridden": "bd-decision-0441",
+  "why": "no actor attribution on this bead"
+}

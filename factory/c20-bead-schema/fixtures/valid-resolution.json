@@ -1,0 +1,9 @@
+{
+  "id": "bd-resolution-0008",
+  "type": "resolution",
+  "created_by": "agent:c39-loop-closure",
+  "status": "closed",
+  "depends_on": ["bd-fixtask-0007"],
+  "closes": "bd-fixtask-0007",
+  "verdict": "resolved"
+}

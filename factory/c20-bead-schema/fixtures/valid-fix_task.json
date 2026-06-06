@@ -1,0 +1,13 @@
+{
+  "id": "bd-fixtask-0007",
+  "type": "fix_task",
+  "created_by": "agent:diagnosis-agent",
+  "status": "open",
+  "depends_on": ["bd-diagnosis-0006", "bd-anomaly-0005"],
+  "diagnosis_ref": "bd-diagnosis-0006",
+  "anomaly_ref": "bd-anomaly-0005",
+  "spec_ref": "packs/c20/agents/schema/prompt.template.md",
+  "attempt_no": 1,
+  "max_attempts": 3,
+  "escalated": false
+}

@@ -1,0 +1,42 @@
+{
+  "_about": "C29 model-floor stylesheet (Software Factory v4, sweep-1). A CSS-like, cost-aware routing policy that maps roles/task-classes to a chosen model, declares a minimum-acceptable model (the FLOOR) per role/task, tags each model with a family, and carries the cross-family policy flag. See README.md and spec C29-model-floor-stylesheet.md.",
+
+  "policy": {
+    "cross_family_required": false,
+    "_cross_family_required_note": "Advisory default at Phase-0 (per spec D-1/FE-1): a same-provider judge isolated by rig/role/prompt is the sanctioned baseline. Flipping this to true is a Gate-B4 trust lever: it would require the judge to run on a DIFFERENT provider family than the coder (cross-provider holdout). When false, route.py only EMITS an advisory note; it never refuses a route on family grounds. When true, a judge whose family == coder family is a hard violation (non-zero exit).",
+    "independence_level": "L1",
+    "_independence_level_note": "L0=none, L1=same-provider judge isolated by rig/role/prompt (Phase-0 default), L2/L3=cross-family/cross-provider (FE-1)."
+  },
+
+  "registry": {
+    "_about": "modeldb-shaped: {id, family, cost_tier, rank}. 'rank' is the capability ordering used by the floor comparison (higher = more capable). 'family' is what the cross-family rule compares; all current models share family 'anthropic' (a non-Anthropic provider would be a different family, i.e. cross-family).",
+    "claude-opus-4-8": { "family": "anthropic", "tier": "opus", "cost_tier": "premium", "rank": 3 },
+    "claude-sonnet-4-6": { "family": "anthropic", "tier": "sonnet", "cost_tier": "standard", "rank": 2 },
+    "claude-haiku-4-5": { "family": "anthropic", "tier": "haiku", "cost_tier": "economy", "rank": 1 }
+  },
+
+  "rules": {
+    "_about": "Maps role + task_class to a chosen model and a declared floor (minimum acceptable model). 'floor' is enforced: a requested_model below the floor rank is upgraded to the floor (or refused). Lookup precedence: exact (role,task_class) -> role default ('*' task_class) -> global default.",
+
+    "coder": {
+      "implement":  { "chosen": "claude-sonnet-4-6", "floor": "claude-sonnet-4-6" },
+      "refactor":   { "chosen": "claude-sonnet-4-6", "floor": "claude-haiku-4-5" },
+      "architect":  { "chosen": "claude-opus-4-8",   "floor": "claude-sonnet-4-6" },
+      "*":          { "chosen": "claude-sonnet-4-6", "floor": "claude-haiku-4-5" }
+    },
+
+    "judge": {
+      "review":     { "chosen": "claude-sonnet-4-6", "floor": "claude-sonnet-4-6" },
+      "score":      { "chosen": "claude-haiku-4-5",  "floor": "claude-haiku-4-5" },
+      "*":          { "chosen": "claude-sonnet-4-6", "floor": "claude-haiku-4-5" }
+    },
+
+    "tool": {
+      "*":          { "chosen": "claude-haiku-4-5",  "floor": "claude-haiku-4-5" }
+    },
+
+    "*": {
+      "*":          { "chosen": "claude-sonnet-4-6", "floor": "claude-haiku-4-5" }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "actor_rig": "r1",
+  "target": "r1-deploy-target",
+  "op": "write",
+  "env": "production"
+}

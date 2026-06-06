@@ -1,0 +1,6 @@
+{
+  "actor_rig": "r1",
+  "target": "r1-spec-bead-42",
+  "op": "read",
+  "env": "sandbox"
+}

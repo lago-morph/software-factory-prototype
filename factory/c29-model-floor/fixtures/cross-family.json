@@ -1,0 +1,6 @@
+{
+  "_comment": "Exercises the cross-family flag: judge/review resolves to claude-sonnet-4-6 (family anthropic); coder_family is also anthropic, so judge family == coder family. With policy cross_family_required=false this emits an ADVISORY note (L1 isolation by rig/role/prompt) and still resolves. Expect exit 0, cross_family.applies=true, cross_family.same_family=true, cross_family_required=false.",
+  "role": "judge",
+  "task_class": "review",
+  "coder_family": "anthropic"
+}

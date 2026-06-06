@@ -188,6 +188,29 @@ you want to work; the bead store keeps your state.
 See [`docs/PLAN.md`](docs/PLAN.md) for design decisions, what's verified, and how
 this maps onto the v4 architecture.
 
+## Backbone components (beyond the substrate)
+
+The repository root packages the **Gas City substrate** — which is Gate B0 of the
+v4 [backbone plan](https://github.com/lago-morph/software-factory/blob/main/architectures/v4/backbone-implementation-plan.md)
+(the 11 adopt-and-configure Gas City components + C28 Claude Code worker). The
+[`factory/`](factory/) directory adds the **Gate B1 build-from-scratch
+components** that depend only on that substrate, each self-contained and tested
+(stdlib-only, no pip):
+
+| Component | What | Exit check |
+|---|---|---|
+| [C20 bead-type schema](factory/c20-bead-schema/) | Legal bead types + validator | accepts a valid bead, rejects an ill-typed one |
+| [C08/C09 spec intake](factory/c08-c09-spec-intake/) | Spec artifact + prompt-template binding | a toy spec round-trips spec → prompt |
+| [C43 fence (boundary half)](factory/c43-fence/) | Deterministic blast-radius typing | types a sample action's blast radius |
+| [C29 model-floor policy](factory/c29-model-floor/) | Cost/family routing on the model stylesheet | applies the floor + cross-family rules |
+
+```bash
+make -C factory test     # run every component's self-test
+```
+
+Later gates (not yet built): the evaluation tier C30–C33 (B2), the C34 holdout
+half (B3), and the bootstrap loop C51–C53 (B3).
+
 ## Repository layout
 
 ```
@@ -197,6 +220,7 @@ software-factory-prototype/
 ├── entrypoint.sh               Render config, provision rigs, bridge the bead store, gc start
 ├── city.toml.example           Templated city config (envsubst'd at startup)
 ├── pack/pack.toml              Imports the bundled gastown role pack
+├── factory/                    Gate B1 backbone components (C20, C08/C09, C43, C29) + tests
 ├── .env.example                Subscription-auth + rig config template
 └── docs/PLAN.md                Design, decisions, verification status, v4 mapping
 ```

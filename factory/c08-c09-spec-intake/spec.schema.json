@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://software-factory/v4/c08/spec.schema.json",
+  "title": "C08 spec artifact",
+  "description": "The version-controlled, human-authored spec-artifact format (C08 §4.1). Faithful to the canonical-track collapse (OQ-1 Reading A): the artifact IS the prompt-template carrier. In v4 the spec lives on disk as agents/<name>/prompt.template.md (Go text/template + Markdown). This JSON form is the stdlib-parseable equivalent: spec_body carries the template text; the other keys carry the logical fields C08 names so downstream components (C09 render+bind, C10 lint, C32/C33 DoD scoring, C39 fix routing) can operate on them.",
+  "type": "object",
+  "required": ["spec_id", "spec_body", "dod"],
+  "additionalProperties": false,
+  "properties": {
+    "spec_id": {
+      "type": "string",
+      "description": "C08 §4.1: stable identity for this spec within the pack. Canonically the pack-relative path segment agents/<name> (the path C09 resolve() keys on). REQUIRED.",
+      "pattern": "^agents/[a-z0-9][a-z0-9_-]*$"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable one-line label for the spec. Convenience field for the binding surface; the canonical identity is spec_id.",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "description": "The human-authored statement of what the spec is for -- the intent the rendered instruction must drive toward. Surfaces C11's 9-field crucible intake into the durable artifact (C08 §2 'authored by C11'). REQUIRED-by-convention authoring surface.",
+      "minLength": 1
+    },
+    "spec_body": {
+      "type": "string",
+      "description": "C08 §4.1: the full Markdown body of the spec. Must be valid Go text/template (INV-2). In this prototype the body is a template string with {{ field }} placeholders bound by C09 (see C09 binding). REQUIRED.",
+      "minLength": 1
+    },
+    "dod": {
+      "type": "string",
+      "description": "C08 §4.1 + INV-4: the free-form Definition-of-Done -- the human-authored statement of what a successful run must satisfy. C33 passes this verbatim to C32's graded judge. Free-form prose at Sweep-2 (per-criterion enumeration is FE-5/deferred, D-15). REQUIRED; absence is E-C08-02.",
+      "minLength": 1
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "description": "Optional list of acceptance-criteria statements (the lintable surface C10 consumes; C08 AC-4). Free-form prose items at Sweep-2 -- NOT machine-scored per-criterion DoD (FE-5/deferred).",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "work_type": {
+      "type": "string",
+      "description": "C08 §4.1: optional agent-role slug (e.g. worker, judge, dog) the spec is authored for; informs C09 role binding and C10 lint focus. Conventionally equals the <name> segment of spec_id.",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "actor": {
+      "type": "string",
+      "description": "C08 §4.1: the actor identity of the spec author/last committer, in the D-29 'kind:id' wire format (e.g. 'human:alice'). Carried via git commit metadata + C41; optional in the artifact body.",
+      "pattern": "^[a-z]+:[A-Za-z0-9._-]+$"
+    },
+    "pack_ref": {
+      "type": "string",
+      "description": "C08 §4.1: provenance -- which pack repo this spec lives in (repo URL or local path). Needed for C51 gene-transfusion attribution and C39 fix routing. Optional.",
+      "minLength": 1
+    },
+    "git_revision": {
+      "type": "string",
+      "description": "C08 §4.1: the commit SHA of the pack at which this spec was authored. Per C08 this is DERIVED from git history, not stored in the file; included here only as an optional provenance echo. Validator does not require it.",
+      "pattern": "^[0-9a-fA-F]{7,40}$"
+    }
+  }
+}

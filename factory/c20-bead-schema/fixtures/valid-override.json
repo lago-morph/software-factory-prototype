@@ -1,0 +1,9 @@
+{
+  "id": "bd-override-0001",
+  "type": "override",
+  "created_by": "operator:jonathan",
+  "status": "closed",
+  "overridden": "bd-decision-0440",
+  "why": "Gate B0 already verified this component manually; skip the redundant re-check.",
+  "depends_on": []
+}

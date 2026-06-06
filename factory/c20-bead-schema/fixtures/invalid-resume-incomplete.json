@@ -1,0 +1,11 @@
+{
+  "$why_invalid": "E5: factory_build with status=in_progress is missing workflow_handle, so gc converge resume <id> would strand (resume-completeness invariant, section 4.5.3 / D-40).",
+  "id": "bd-build-9005",
+  "type": "factory_build",
+  "created_by": "agent:c52-self-bootstrap",
+  "status": "in_progress",
+  "transfused_from": "strongdm/comply",
+  "spec_ref": "packs/c43/agents/fence/prompt.template.md",
+  "scenario_ref": "scenarios/c43/",
+  "exemplar_set": [{"ref": "strongdm/comply", "license": "MIT"}]
+}

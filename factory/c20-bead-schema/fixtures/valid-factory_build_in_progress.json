@@ -1,0 +1,10 @@
+{
+  "id": "bd-build-0042",
+  "type": "factory_build_in_progress",
+  "created_by": "agent:c52-self-bootstrap",
+  "status": "in_progress",
+  "transfused_from": ["strongdm/comply", "lago-morph/agent-os"],
+  "spec_ref": "packs/c43/agents/fence/prompt.template.md",
+  "scenario_ref": "scenarios/c43/",
+  "workflow_handle": "gcwf://converge/0042/step-3"
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "Resolves cleanly: coder/architect -> chosen claude-opus-4-8, floor claude-sonnet-4-6. No requested_model pin, no upgrade, no cross-family (role != judge). Expect exit 0, resolved_model=claude-opus-4-8, upgraded=false.",
+  "role": "coder",
+  "task_class": "architect"
+}

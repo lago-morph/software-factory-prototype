@@ -1,0 +1,10 @@
+{
+  "$why_invalid": "E6 / XC-4: bundle_id is not the D-2 namespace softwarefactory.v4.beads.",
+  "id": "bd-override-9001",
+  "type": "override",
+  "bundle_id": "strongdm.v4.beads",
+  "created_by": "operator:jonathan",
+  "status": "closed",
+  "overridden": "bd-decision-0440",
+  "why": "carries a colliding bundle namespace"
+}

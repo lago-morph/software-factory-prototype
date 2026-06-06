@@ -8,3 +8,7 @@ workspace/
 *.log
 .gc/
 .beads/
+
+# Python
+__pycache__/
+*.pyc
