@@ -4,9 +4,14 @@
 # start. The pack.toml beside it imports the bundled `gastown` role pack.
 
 [workspace]
-name = "software-factory-v4"
+# NOTE: the workspace name lives in .gc/site.toml (workspace_name); gc v2
+# treats workspace identity fields in city.toml as deprecated.
 provider = "claude"
 global_fragments = ["command-glossary", "operational-awareness"]
+
+# Provider catalog. gc requires the workspace's provider to be declared here.
+[providers.claude]
+base = "builtin:claude"
 
 # Per-rig pack imports — every registered rig auto-imports gastown's rig-scoped
 # agents (witness, refinery, polecat) without per-rig editing.
@@ -23,13 +28,18 @@ wisp_ttl = "30m"
 formula_v2 = true
 
 [beads]
-# Dolt-backed bead store via the `bd` binary. The Dolt SQL server runs in the
-# separate `beadstore` compose service; the city is pointed at it as an EXTERNAL
-# endpoint at runtime (entrypoint.sh: `gc beads city use-external --host
-# beadstore --port 3307`). No `[dolt]` lifecycle section here on purpose — that
-# would make gc try to manage its own local server instead of using the shared
-# one. The store is local-only and never pushed to a git remote.
+# Dolt-backed bead store via the `bd` binary, required by the gastown pack
+# (which makes hundreds of `gc bd` calls). gc manages the Dolt SQL server itself
+# (no separate process to babysit, no external-endpoint bootstrap dance).
 provider = "bd"
+
+[dolt]
+# gc-managed Dolt SQL server. host = "0.0.0.0" + the published 3307 port makes the
+# bead store reachable as a host/port by the whole compose project (city:3307)
+# and from the host (127.0.0.1:3307). The database files live under the mounted
+# /workspace and are NEVER pushed to a git remote — this store is local-only.
+host = "0.0.0.0"
+port = 3307
 
 [orders]
 max_timeout = "10m"

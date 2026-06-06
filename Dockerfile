@@ -16,17 +16,22 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — build `gc` from source.
 #
-# gc pulls in Dolt's go-icu-regex, a CGO dependency that needs ICU headers at
-# build time and the ICU shared libs at runtime. We build on golang:1.26-bookworm
-# (Debian 12, glibc 2.36) so the resulting CGO binary runs on the ubuntu:24.04
-# runtime (glibc 2.39) — bookworm-built -> noble-run is forward-compatible.
+# gc pulls in Dolt's go-icu-regex, a CGO dependency that links ICU. The binary
+# references ICU shared libraries by SONAME (e.g. libicui18n.so.NN), so the
+# builder's ICU major version MUST match the runtime's. We therefore build on
+# the SAME ubuntu:24.04 base as the runtime (ICU 74, glibc 2.39) — building on a
+# different base (e.g. Debian bookworm = ICU 72) produces a gc that fails to
+# load on noble with "library not found".
 # ---------------------------------------------------------------------------
-FROM golang:1.26-bookworm AS gcbuild
+FROM ubuntu:24.04 AS gcbuild
 
+ARG GO_VERSION=1.26.4
 RUN apt-get update -qq \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-      git make gcc g++ pkg-config libicu-dev ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+      ca-certificates curl git make gcc g++ pkg-config libicu-dev xz-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Pin the Gas City source. Override with --build-arg GASCITY_REF=<sha|branch>.
 ARG GASCITY_REPO=https://github.com/gastownhall/gascity.git
@@ -128,8 +133,7 @@ COPY pack /pack
 COPY city.toml.example /pack/city.toml.example
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY beadstore-entrypoint.sh /usr/local/bin/beadstore-entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/beadstore-entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Keep large dolt transfers from tripping default HTTP buffers (harmless here).
 RUN git config --system http.postBuffer 524288000

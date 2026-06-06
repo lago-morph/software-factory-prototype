@@ -4,45 +4,18 @@
 #   docker compose logs -f city       # watch the controller boot
 #   docker compose exec city gc status
 #
-# Two services share one image:
-#   beadstore — the local Dolt SQL server (the shared bead store). Reachable by
-#               the whole compose project at  beadstore:3307  (host/port). Its
-#               data lives in the `beads-data` named volume and is NEVER synced
-#               to any remote.
-#   city      — the Gas City controller + the agent fleet (claude in tmux).
+# A single `city` service runs the Gas City controller, the gc-managed Dolt bead
+# store, and the agent fleet (claude in tmux). The bead store listens on
+# city:3307 inside the compose network and is published to 127.0.0.1:3307 on the
+# host, so anything in the compose project (or a local SQL client) can reach it
+# by host/port. Its database files live under ./workspace and are NEVER synced to
+# any remote.
 
 services:
-  beadstore:
-    build: .
-    image: software-factory-v4:latest
-    container_name: sfv4-beadstore
-    entrypoint: ["/usr/local/bin/beadstore-entrypoint.sh"]
-    environment:
-      - BEADS_DATA_DIR=/beads-data
-      - BEADS_PORT=3307
-      - BEADS_HOST=0.0.0.0
-      - BEADS_USER=root
-    volumes:
-      - beads-data:/beads-data
-    # Publish to the host too, so you can point a local mysql/dolt client at it.
-    ports:
-      - "127.0.0.1:3307:3307"
-    init: true
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3307'"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 20s
-
   city:
     build: .
     image: software-factory-v4:latest
     container_name: sfv4-city
-    depends_on:
-      beadstore:
-        condition: service_healthy
     env_file: .env
     environment:
       # --- Claude auth (Max/Pro subscription, NOT an API key) ---
@@ -51,10 +24,6 @@ services:
       # for the (rarer) pay-as-you-go API case and can be left empty.
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # --- Bead store endpoint (the beadstore service) ---
-      - BEADS_HOST=beadstore
-      - BEADS_PORT=3307
-      - BEADS_USER=root
       # --- Rigs: empty => self-contained local rigs; set URLs to clone real ones ---
       - RIG1_NAME=${RIG1_NAME:-rig1}
       - RIG2_NAME=${RIG2_NAME:-rig2}
@@ -65,9 +34,13 @@ services:
       # claude --dangerously-skip-permissions refuses to run as root unless this
       # is set. The container is itself an isolated environment, so it's safe.
       - IS_SANDBOX=1
+    # Bead store (gc-managed Dolt) — reachable by the host at 127.0.0.1:3307.
+    ports:
+      - "127.0.0.1:3307:3307"
     volumes:
-      # City state (city.toml, .gc runtime state, rigs) — survives `restart`,
-      # re-created from scratch on a cold `docker compose up` after `down`.
+      # All city state — city.toml, .gc runtime state, the Dolt bead-store data,
+      # and the rigs — lives here. Survives `restart`; re-created on a cold
+      # `docker compose up` after `down`. This directory is local and never synced.
       - ./workspace:/workspace
       # Uncomment to live-edit pack content (then no rebuild needed for prompts):
       # - ./pack:/pack
@@ -75,6 +48,3 @@ services:
     stdin_open: true
     tty: true
     restart: unless-stopped
-
-volumes:
-  beads-data:
