@@ -1,0 +1,57 @@
+# Software Factory v4 prototype — city configuration template.
+#
+# Rendered by entrypoint.sh (envsubst) into /workspace/city/city.toml on every
+# start. The pack.toml beside it imports the bundled `gastown` role pack.
+
+[workspace]
+# NOTE: the workspace name lives in .gc/site.toml (workspace_name); gc v2
+# treats workspace identity fields in city.toml as deprecated.
+provider = "claude"
+global_fragments = ["command-glossary", "operational-awareness"]
+
+# Provider catalog. gc requires the workspace's provider to be declared here.
+[providers.claude]
+base = "builtin:claude"
+
+# Per-rig pack imports — every registered rig auto-imports gastown's rig-scoped
+# agents (witness, refinery, polecat) without per-rig editing.
+[defaults.rig.imports.gastown]
+source = "github.com/gastownhall/gascity.git//examples/gastown/packs/gastown"
+
+[daemon]
+patrol_interval = "30s"
+max_restarts = 5
+restart_window = "1h"
+shutdown_timeout = "10s"
+wisp_gc_interval = "5m"
+wisp_ttl = "30m"
+formula_v2 = true
+
+[beads]
+# Dolt-backed bead store via the `bd` binary, required by the gastown pack
+# (which makes hundreds of `gc bd` calls). gc manages the Dolt SQL server itself
+# (no separate process to babysit, no external-endpoint bootstrap dance).
+provider = "bd"
+
+# NOTE: no [dolt] section on purpose. gc manages the Dolt SQL server with its
+# own defaults (a deterministic port hashed from the city path, bound to
+# 127.0.0.1 inside the container). The entrypoint bridges 0.0.0.0:3307 ->
+# that port (socat) so the store is reachable as a host/port by the whole
+# compose project (city:3307) and from the host (127.0.0.1:3307). The database
+# files live under the mounted /workspace and are NEVER pushed to a git remote —
+# this store is local-only. (Pinning [dolt].port here breaks the managed Dolt
+# lifecycle in gc 1.1.1, so we discover the real port at runtime instead.)
+
+[orders]
+max_timeout = "10m"
+
+# Rigs. Filesystem path bindings live in .gc/site.toml (machine-local), written
+# by the entrypoint. `prefix` is required so rig1/rig2 don't both auto-derive
+# the colliding "ri" bead prefix.
+[[rigs]]
+name = "rig1"
+prefix = "r1"
+
+[[rigs]]
+name = "rig2"
+prefix = "r2"

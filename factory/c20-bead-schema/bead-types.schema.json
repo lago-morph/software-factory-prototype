@@ -1,0 +1,260 @@
+{
+  "$comment": "C20 bead-type schema registry. Canonical bundle document handed to C22 register_bundle (D-3). Derived from architectures/v4/spec/C20-bead-schema.md sections 4.1, 4.5.0-4.5.5. bundle_id is the D-2 namespace; anything else is the XC-4 collision (E6).",
+  "bundle_id": "softwarefactory.v4.beads",
+  "version": "0.1.0",
+  "logical_types": [
+    "bead_id",
+    "actor",
+    "string",
+    "int",
+    "bool",
+    "timestamp",
+    "path",
+    "handle",
+    "enum",
+    "list<bead_id>",
+    "list<string>",
+    "JSON"
+  ],
+  "envelope": {
+    "$comment": "Common envelope on every bead type (C20 spec 4.5.0).",
+    "fields": {
+      "id": {
+        "type": "bead_id",
+        "required": true,
+        "semantics": "stable identifier; target of gc bd find / gc converge resume <id>"
+      },
+      "type": {
+        "type": "enum",
+        "required": true,
+        "enum": [
+          "override",
+          "fix_task",
+          "factory_build",
+          "factory_build_in_progress",
+          "anomaly",
+          "diagnosis",
+          "resolution",
+          "score_record",
+          "satisfaction_metric"
+        ],
+        "semantics": "registry type tag; closed set (section 3 invariant)"
+      },
+      "created_by": {
+        "type": "actor",
+        "required": true,
+        "semantics": "actor attribution present on every bead (P9). Wire form is colon-delimited 'kind:id' per D-29."
+      },
+      "depends_on": {
+        "type": "list<bead_id>",
+        "required": false,
+        "semantics": "directed dependency edges (P10). Field name per D-28."
+      },
+      "status": {
+        "type": "enum",
+        "required": true,
+        "enum": ["open", "in_progress", "closed"],
+        "semantics": "lifecycle state of the bead (FAITHFUL-FILL section 4.1 / 4.5.0)"
+      },
+      "version": {
+        "type": "string",
+        "required": false,
+        "semantics": "schema-version pin against which this bead was written (section 4.4). Optional on the bead; the authoritative bundle version is at the top of this document."
+      }
+    }
+  },
+  "types": {
+    "override": {
+      "$comment": "spec 4.5.1 - operator-override record (README P8)",
+      "fields": {
+        "overridden": {
+          "type": "bead_id|string",
+          "required": true,
+          "semantics": "reference to the action/decision the operator overrode"
+        },
+        "why": {
+          "type": "string",
+          "required": true,
+          "semantics": "captured 'why' rationale (P8)"
+        },
+        "surfaced_in": {
+          "type": "bead_id",
+          "required": false,
+          "semantics": "back-pointer to a pattern-surfacing report bead if rolled up"
+        }
+      }
+    },
+    "fix_task": {
+      "$comment": "spec 4.5.2 - diagnosis-generated repair unit (README P11; Phase 3b). Carries XC-3 bound slots.",
+      "fields": {
+        "diagnosis_ref": {
+          "type": "bead_id",
+          "required": true,
+          "semantics": "pointer to the diagnosis that produced this fix (chain edge diagnosis --produces--> fix_task)"
+        },
+        "anomaly_ref": {
+          "type": "bead_id",
+          "required": true,
+          "semantics": "pointer to the originating anomaly carried through diagnosis"
+        },
+        "spec_ref": {
+          "type": "path",
+          "required": true,
+          "semantics": "the C08 spec the fix must satisfy ('fix the spec, not the output')"
+        },
+        "attempt_no": {
+          "type": "int",
+          "required": true,
+          "semantics": "which attempt this fix_task is for the same anomaly (XC-3 slot). C39 owns the value."
+        },
+        "max_attempts": {
+          "type": "int",
+          "required": false,
+          "semantics": "bound beyond which the chain escalates (XC-3 slot; value is C39 policy)"
+        },
+        "escalated": {
+          "type": "bool",
+          "required": false,
+          "semantics": "true once the chain was handed to a human (XC-3 slot; C39 sets)"
+        }
+      }
+    },
+    "factory_build": {
+      "$comment": "spec 4.5.3 - factory self-build record (AI-CONTEXT section 16; D-40 lifecycle). Canonical resume path is type=factory_build + status=in_progress (XC-2 resolution).",
+      "fields": {
+        "transfused_from": {
+          "type": "string|list<string>",
+          "required": true,
+          "semantics": "gene-transfusion attribution: external exemplar(s) this component transfused"
+        },
+        "spec_ref": {
+          "type": "path",
+          "required": true,
+          "semantics": "spec pointer (packs/*/agents/*/prompt.template.md)"
+        },
+        "scenario_ref": {
+          "type": "path",
+          "required": true,
+          "semantics": "scenario pointer (scenarios/<component>/)"
+        },
+        "status": {
+          "type": "enum",
+          "required": true,
+          "enum": ["in_progress", "closed"],
+          "semantics": "D-40 lifecycle, aligned to envelope {open,in_progress,closed}. in_progress on build-start; C52 advances to closed after Phase B deploy. Go/no-go outcome lives in milestone_verdict."
+        },
+        "workflow_handle": {
+          "type": "handle",
+          "required": false,
+          "semantics": "resume token for gc converge resume <bead_id>. Required when status=in_progress (see validator resume-completeness check); may be absent on pre-dispatch write."
+        },
+        "gate_decision": {
+          "type": "JSON",
+          "required": false,
+          "semantics": "C52 human-review record {decision, reviewer_id, decision_ts, notes, bead_id}"
+        },
+        "transfusion_verdict": {
+          "type": "JSON",
+          "required": false,
+          "semantics": "C51 predicate outcome (C51 4.1.2)"
+        },
+        "milestone_verdict": {
+          "type": "enum",
+          "required": false,
+          "enum": ["go", "no_go"],
+          "semantics": "C53 bootstrap go/no-go outcome; consumed by C54"
+        },
+        "milestone_evidence": {
+          "type": "JSON",
+          "required": false,
+          "semantics": "C53 full GoNoGoDecision evidence record"
+        },
+        "milestone_decided_at": {
+          "type": "timestamp",
+          "required": false,
+          "semantics": "when C53 decide() was called"
+        },
+        "exemplar_set": {
+          "type": "JSON",
+          "required": true,
+          "semantics": "C51-owned declared exemplar set; >=1 required (>=1-exemplar invariant)"
+        }
+      }
+    },
+    "factory_build_in_progress": {
+      "$comment": "spec 4.5.4 - PRE-D-40 legacy-compatibility alias for the AI-CONTEXT section 16 literal query 'gc bd find --type factory_build_in_progress'. New code MUST use factory_build + status=in_progress. Carries resume-completeness fields so the literal query resolves verbatim.",
+      "legacy_alias_of": "factory_build",
+      "fields": {
+        "transfused_from": {
+          "type": "string|list<string>",
+          "required": true,
+          "semantics": "gene-transfusion attribution"
+        },
+        "spec_ref": {
+          "type": "path",
+          "required": true,
+          "semantics": "spec pointer"
+        },
+        "scenario_ref": {
+          "type": "path",
+          "required": true,
+          "semantics": "scenario pointer"
+        },
+        "workflow_handle": {
+          "type": "handle",
+          "required": true,
+          "semantics": "resume token; required on this legacy type (E5 resume-completeness, AI-CONTEXT section 16 695-699)"
+        }
+      }
+    },
+    "anomaly": {
+      "$comment": "spec 4.5.5 - chain-derived, PROVISIONAL (OQ-C20-2). Self-heal chain head.",
+      "provisional": true,
+      "fields": {
+        "signal_ref": {
+          "type": "string",
+          "required": true,
+          "semantics": "pointer to the detection signal (C36/C37) that fired"
+        }
+      }
+    },
+    "diagnosis": {
+      "$comment": "spec 4.5.5 - chain-derived, PROVISIONAL (OQ-C20-2).",
+      "provisional": true,
+      "fields": {
+        "anomaly_ref": {
+          "type": "bead_id",
+          "required": true,
+          "semantics": "the anomaly this diagnoses (edge anomaly --diagnosed_by--> diagnosis)"
+        }
+      }
+    },
+    "resolution": {
+      "$comment": "spec 4.5.5 - chain-derived, PROVISIONAL (OQ-C20-2). Carries XC-3 closure slots; its existence + positive verdict is loop closure.",
+      "provisional": true,
+      "fields": {
+        "closes": {
+          "type": "bead_id",
+          "required": true,
+          "semantics": "the fix_task this resolution closes (XC-3 slot; edge fix_task --resolved_by--> resolution)"
+        },
+        "verdict": {
+          "type": "enum",
+          "required": true,
+          "enum": ["resolved", "escalated", "abandoned"],
+          "semantics": "terminal outcome (G18 terminal-state enum); set by C39"
+        }
+      }
+    },
+    "score_record": {
+      "$comment": "spec 3.1 - registered into the bundle per D-3 so C22 resolve_type can locate it, but schema is OWNED BY C32 (D-39). C20 only registers the type; field detail lives in C32 3.2. Minimal envelope-only entry here.",
+      "schema_owner": "C32",
+      "fields": {}
+    },
+    "satisfaction_metric": {
+      "$comment": "spec 3.1 - registered into the bundle per D-3 so C22 resolve_type can locate it, but schema is OWNED BY C33 (D-39). C20 only registers the type; field detail lives in C33 3.4. Minimal envelope-only entry here.",
+      "schema_owner": "C33",
+      "fields": {}
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "spec_id": "agents/worker",
+  "title": "Reverse a string",
+  "intent": "Produce a small utility that reverses an input string, demonstrating the spec->prompt round-trip end to end.",
+  "work_type": "worker",
+  "actor": "human:alice",
+  "pack_ref": "github.com/example/toy-pack",
+  "spec_body": "Implement a function `reverse(s)` that returns the input string `s` with its characters in reverse order. Empty input returns empty output. Preserve Unicode code points (do not split surrogate pairs).",
+  "acceptance_criteria": [
+    "reverse(\"abc\") returns \"cba\"",
+    "reverse(\"\") returns \"\"",
+    "reverse is a pure function with no side effects"
+  ],
+  "dod": "A run is successful when reverse() returns the exact character-reversed string for all provided examples, handles empty input, and introduces no side effects. The implementation must pass the listed acceptance criteria."
+}

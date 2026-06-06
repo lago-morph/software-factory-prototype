@@ -1,0 +1,50 @@
+# Software Factory v4 prototype — laptop docker-compose.
+#
+#   docker compose up -d --build      # build the image and start the stack
+#   docker compose logs -f city       # watch the controller boot
+#   docker compose exec city gc status
+#
+# A single `city` service runs the Gas City controller, the gc-managed Dolt bead
+# store, and the agent fleet (claude in tmux). The bead store listens on
+# city:3307 inside the compose network and is published to 127.0.0.1:3307 on the
+# host, so anything in the compose project (or a local SQL client) can reach it
+# by host/port. Its database files live under ./workspace and are NEVER synced to
+# any remote.
+
+services:
+  city:
+    build: .
+    image: software-factory-v4:latest
+    container_name: sfv4-city
+    env_file: .env
+    environment:
+      # --- Claude auth (Max/Pro subscription, NOT an API key) ---
+      # Generate once on your laptop with `claude setup-token` and put the
+      # result in .env as CLAUDE_CODE_OAUTH_TOKEN. ANTHROPIC_API_KEY is only
+      # for the (rarer) pay-as-you-go API case and can be left empty.
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # --- Rigs: empty => self-contained local rigs; set URLs to clone real ones ---
+      - RIG1_NAME=${RIG1_NAME:-rig1}
+      - RIG2_NAME=${RIG2_NAME:-rig2}
+      - RIG1_URL=${RIG1_URL:-}
+      - RIG2_URL=${RIG2_URL:-}
+      - RIG1_BRANCH=${RIG1_BRANCH:-main}
+      - RIG2_BRANCH=${RIG2_BRANCH:-main}
+      # claude --dangerously-skip-permissions refuses to run as root unless this
+      # is set. The container is itself an isolated environment, so it's safe.
+      - IS_SANDBOX=1
+    # Bead store (gc-managed Dolt) — reachable by the host at 127.0.0.1:3307.
+    ports:
+      - "127.0.0.1:3307:3307"
+    volumes:
+      # All city state — city.toml, .gc runtime state, the Dolt bead-store data,
+      # and the rigs — lives here. Survives `restart`; re-created on a cold
+      # `docker compose up` after `down`. This directory is local and never synced.
+      - ./workspace:/workspace
+      # Uncomment to live-edit pack content (then no rebuild needed for prompts):
+      # - ./pack:/pack
+    init: true          # tini reaps the short-lived children bd/dolt spawn
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

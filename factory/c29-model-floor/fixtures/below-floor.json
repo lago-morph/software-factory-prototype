@@ -1,0 +1,6 @@
+{
+  "_comment": "Below-floor: coder/implement has floor claude-sonnet-4-6, but requested_model pins claude-haiku-4-5 (rank 1 < floor rank 2). Policy upgrades to floor. Expect exit 0, resolved_model=claude-sonnet-4-6, upgraded=true.",
+  "role": "coder",
+  "task_class": "implement",
+  "requested_model": "claude-haiku-4-5"
+}

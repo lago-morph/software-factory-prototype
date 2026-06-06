@@ -1,0 +1,84 @@
+{
+  "policy_id": "c43-blast-radius-fence",
+  "version": "sweep-1",
+  "spec": "C43 — Isolation & lethal-trifecta boundary",
+  "spec_path": "architectures/v4/spec/C43-isolation-boundary.md",
+  "half": "boundary-typing / blast-radius (the part that needs only C42 rig partitions; the C44 twin-isolation half and the C34 holdout half are OUT of scope)",
+  "description": "Declarative policy for deterministic blast-radius typing of an action over Gas City rig partitions. Given an action (actor rig, target, op, env) the classifier types its blast radius and refuses dangerous combinations. Deterministic rule only — never an LLM judgment (F51 primary-guard invariant).",
+
+  "partition_model": {
+    "comment": "Bead-prefix scoping is the Gas City scoping MECHANISM (D-23, gascity-prototype@b14c278). Agents scoped to a rig see/write only their own prefix. Cross-prefix reach is the blast radius C43 bounds.",
+    "city_scope": {
+      "name": "gp",
+      "prefix": "gp-",
+      "role": "city HQ / global partition"
+    },
+    "rigs": [
+      { "name": "rig1", "prefix": "r1-" },
+      { "name": "rig2", "prefix": "r2-" }
+    ],
+    "scope_separator": "-",
+    "default_scopes": ["gp", "r1", "r2"]
+  },
+
+  "in_bounds_rule": {
+    "comment": "An action is in-bounds (same-partition) iff its target resolves to the actor's own rig prefix. The actor rig also owns its run-scoped worktree, which is isolated by construction (no SurfaceTypingRecord required, §3.3).",
+    "same_partition": "target_scope == actor_rig_scope",
+    "cross_partition": "target_scope != actor_rig_scope (and target_scope is a recognised foreign rig/city scope)"
+  },
+
+  "boundary_types": {
+    "comment": "Closed set of boundary types from C43 §4.1. The boundary-typing half realises 'isolated' and 'production' deterministically now; 'twin' is the C44 routing target (aspirational until twins land, G31) and is treated as in-bounds-by-default here.",
+    "twin": "external interaction served by a C44 behavioral clone (default for an external surface; routing realised at Phase 3c)",
+    "isolated": "sandboxed surface with no production reach — the actor's own rig worktree/partition (C42/C04). Reachable by default.",
+    "production": "real external system — reachable ONLY via an explicit per-pack production-scissors declaration (F44). Default-deny."
+  },
+
+  "blast_radius_classes": {
+    "comment": "How the classifier types an action's blast radius. The first matching refusal class (in listed order) wins; otherwise the action is in-bounds.",
+    "in_bounds": {
+      "verdict": "allow",
+      "meaning": "Same-partition action against the actor's own rig scope (or its isolated worktree), in sandbox env. Bounded blast radius."
+    },
+    "cross_partition_write": {
+      "verdict": "refuse",
+      "reason_code": "E-C43-XP-WRITE",
+      "meaning": "A write whose target resolves to a partition the actor does not own (a foreign rig prefix or the city scope). Violates the blast-radius bound (D-13) — an agent must not write outside its own partition.",
+      "trigger": "op == write AND target_scope != actor_rig_scope"
+    },
+    "production_action": {
+      "verdict": "refuse",
+      "reason_code": "E-C43-PROD",
+      "meaning": "Any action typed env=production. Per D-20 default a production-typed action is blocked: production reach requires an explicit per-pack production-scissors declaration (F44), which is not granted in this boundary-typing-half fence.",
+      "trigger": "env == production"
+    }
+  },
+
+  "refusal_rules": [
+    {
+      "id": "production_action",
+      "order": 1,
+      "rule": "If env == production then REFUSE (D-20 default: a production-typed action is blocked). Evaluated first so a production cross-partition write is reported as production_action.",
+      "reason_code": "E-C43-PROD"
+    },
+    {
+      "id": "cross_partition_write",
+      "order": 2,
+      "rule": "If op == write AND the target's resolved scope != the actor's rig scope then REFUSE (cross-partition write).",
+      "reason_code": "E-C43-XP-WRITE"
+    }
+  ],
+
+  "defaults": {
+    "env": "sandbox",
+    "production_scissors": false,
+    "comment": "D-20 (ADOPTED 2026-05-31): a production-typed action is blocked. Default env is sandbox; production requires explicit per-pack scissors not present in this half."
+  },
+
+  "out_of_scope": [
+    "C34 holdout read-isolation enforcement + audit (a distinct boundary, D-13)",
+    "C44 digital twins themselves and the realized twin route (Phase 3c, G31)",
+    "Runtime hook into gc / enforcement watcher (sweep-2; design DEFERRED per D-30)",
+    "Capability-grant engine (C02-04 dropped), spawn-time OS jail (C04-05), OPA (C42-06), boundary_class tags (C41-07)"
+  ]
+}

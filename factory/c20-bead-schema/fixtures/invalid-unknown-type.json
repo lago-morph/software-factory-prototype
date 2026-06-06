@@ -1,0 +1,7 @@
+{
+  "$why_invalid": "E1: 'cleanup_task' is not in the closed registry; gc bd find --type cleanup_task would be ill-defined (the G17 failure).",
+  "id": "bd-mystery-9003",
+  "type": "cleanup_task",
+  "created_by": "agent:rogue-writer",
+  "status": "open"
+}

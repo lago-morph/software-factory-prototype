@@ -1,0 +1,6 @@
+{
+  "actor_rig": "r1",
+  "target": "r1-build-step-7",
+  "op": "write",
+  "env": "sandbox"
+}

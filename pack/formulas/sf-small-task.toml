@@ -1,0 +1,119 @@
+description = """
+Smallest useful end-to-end work formula for the Software Factory v4 prototype.
+
+A four-node pipeline that takes one small task (carried in the assignment bead's
+description) and runs it through survey -> implement -> verify -> report. It uses
+only primitives this prototype ships (gc prime, gc bd, git, gc mail), so it is a
+good first formula to watch run by hand.
+
+Run it by slinging a task bead at a worker, naming this formula:
+
+    gc sling <rig>/<prefix>polecat <task-bead-id> --on sf-small-task
+
+or pour it as a standalone molecule:
+
+    gc bd mol wisp sf-small-task --var task="tidy the README"
+
+## The graph
+
+    survey ──► implement ──► verify ──► report
+
+Each [[steps]] block below is one node; `needs` are the edges. The worker runs
+the nodes in dependency order, doing what each node's description says.
+"""
+formula = "sf-small-task"
+
+[requires]
+formula_compiler = ">=2.0.0"
+
+[vars]
+[vars.binding_prefix]
+description = "Import binding prefix for gastown agent identities (trailing dot when bound)."
+default = ""
+
+[vars.task]
+description = "The small task to perform. Usually supplied by the assignment bead's description; this var is a fallback when poured standalone."
+default = ""
+
+[[steps]]
+id = "survey"
+title = "Understand the task and the repo before changing anything"
+description = """
+Prime your environment and figure out what the task is asking for.
+
+**1. Prime and locate the repo:**
+```bash
+gc prime
+gc bd prime
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+```
+
+**2. Read the task.** The assignment bead's description is the source of truth;
+`{{task}}` is a fallback if this formula was poured standalone. Read whatever
+files the task touches before forming a plan. Do not edit anything in this node.
+
+**3. Write a short plan** (3-6 bullets) covering: what you will change, which
+files, and how you will know it worked. Keep it in your working notes for the
+next node. Breadth over polish — surface any uncertainty instead of hiding it.
+"""
+
+[[steps]]
+id = "implement"
+title = "Make the change"
+needs = ["survey"]
+description = """
+Carry out the plan from the survey node.
+
+- Make the smallest change that satisfies the task. Prefer a thin, reviewable
+  edit over a sweeping one.
+- Keep edits inside this rig's repo. Do not touch unrelated files.
+- Do NOT commit yet — the verify node checks the diff first.
+"""
+
+[[steps]]
+id = "verify"
+title = "Check your own work"
+needs = ["implement"]
+description = """
+Review the change before reporting it.
+
+**1. Look at exactly what changed:**
+```bash
+git -C "$REPO_ROOT" --no-pager diff
+```
+
+**2. Sanity-check against the plan:** does the diff do what the task asked, and
+nothing extra? If there is an obvious test or build command for this repo, run
+it. If the change is wrong or incomplete, go back and fix it before continuing.
+
+**3. Decide a verdict:** `ok` (ready to report) or `needs-rework` (loop back to
+implement). Record one sentence of rationale for the report node.
+"""
+
+[[steps]]
+id = "report"
+title = "Record the result and hand it back"
+needs = ["verify"]
+description = """
+Make the work durable and tell the coordinator.
+
+**1. Commit the change** (only if the verify verdict was `ok`):
+```bash
+git -C "$REPO_ROOT" add -A
+git -C "$REPO_ROOT" commit -m "<short summary of the task>"
+```
+
+**2. Write the full report into the bead notes** so it survives the session:
+what the task was, what you changed (file list), the verify verdict, and any
+follow-ups. Use `gc bd update <id> --notes ...` (or the notes mechanism your
+session exposes).
+
+**3. Mail the coordinator** recorded on the bead metadata (fall back to the
+mayor) that the task is done, then close the bead and drain the session:
+```bash
+gc mail send <coordinator> --subject "sf-small-task done" --body "see bead notes"
+gc bd update <id> --status=closed
+gc runtime drain-ack
+```
+"""

@@ -1,0 +1,8 @@
+{
+  "spec_id": "agents/worker",
+  "title": "Reverse a string (missing DoD)",
+  "intent": "This spec is intentionally invalid: it omits the required free-form Definition-of-Done (C08 INV-4 / E-C08-02).",
+  "work_type": "worker",
+  "actor": "human:alice",
+  "spec_body": "Implement a function `reverse(s)` that returns the input string `s` reversed."
+}

@@ -1,0 +1,10 @@
+{
+  "$why_invalid": "E3: fix_task is missing the required type-specific field spec_ref.",
+  "id": "bd-fixtask-9007",
+  "type": "fix_task",
+  "created_by": "agent:diagnosis-agent",
+  "status": "open",
+  "diagnosis_ref": "bd-diagnosis-0006",
+  "anomaly_ref": "bd-anomaly-0005",
+  "attempt_no": 1
+}
