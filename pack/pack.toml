@@ -1,0 +1,19 @@
+# Software Factory v4 prototype — root pack.
+#
+# Imports the bundled `gastown` role taxonomy (mayor, deacon, boot, witness,
+# refinery, polecat, crew, dog). The pack lives inside the gc binary; gc
+# resolves the `github.com/gastownhall/gascity.git//...` source from its
+# embedded filesystem at load time — no network round-trip.
+#
+# City-level [imports.gastown] expands city-scoped agents (mayor, deacon, boot)
+# on startup. Rig-level [defaults.rig.imports.gastown] (in city.toml) gives every
+# rig the rig-scoped agents (witness, refinery, polecat).
+
+[pack]
+name = "software-factory-v4"
+schema = 2
+
+[imports.gastown]
+source = "github.com/gastownhall/gascity.git//examples/gastown/packs/gastown"
+# gastown imports `maintenance` transitively, so we do NOT import it here —
+# doing so would duplicate the `dog` agent and refuse startup.

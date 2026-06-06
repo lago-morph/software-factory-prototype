@@ -1,0 +1,10 @@
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime state (re-created by the entrypoint on a cold start)
+workspace/
+*.log
+.gc/
+.beads/

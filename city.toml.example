@@ -1,0 +1,46 @@
+# Software Factory v4 prototype — city configuration template.
+#
+# Rendered by entrypoint.sh (envsubst) into /workspace/city/city.toml on every
+# start. The pack.toml beside it imports the bundled `gastown` role pack.
+
+[workspace]
+name = "software-factory-v4"
+provider = "claude"
+global_fragments = ["command-glossary", "operational-awareness"]
+
+# Per-rig pack imports — every registered rig auto-imports gastown's rig-scoped
+# agents (witness, refinery, polecat) without per-rig editing.
+[defaults.rig.imports.gastown]
+source = "github.com/gastownhall/gascity.git//examples/gastown/packs/gastown"
+
+[daemon]
+patrol_interval = "30s"
+max_restarts = 5
+restart_window = "1h"
+shutdown_timeout = "10s"
+wisp_gc_interval = "5m"
+wisp_ttl = "30m"
+formula_v2 = true
+
+[beads]
+# Dolt-backed bead store via the `bd` binary. The Dolt SQL server runs in the
+# separate `beadstore` compose service; the city is pointed at it as an EXTERNAL
+# endpoint at runtime (entrypoint.sh: `gc beads city use-external --host
+# beadstore --port 3307`). No `[dolt]` lifecycle section here on purpose — that
+# would make gc try to manage its own local server instead of using the shared
+# one. The store is local-only and never pushed to a git remote.
+provider = "bd"
+
+[orders]
+max_timeout = "10m"
+
+# Rigs. Filesystem path bindings live in .gc/site.toml (machine-local), written
+# by the entrypoint. `prefix` is required so rig1/rig2 don't both auto-derive
+# the colliding "ri" bead prefix.
+[[rigs]]
+name = "rig1"
+prefix = "r1"
+
+[[rigs]]
+name = "rig2"
+prefix = "r2"
