@@ -1,8 +1,8 @@
 # Software Factory v4 prototype image.
 #
-# A single image used by BOTH docker-compose services:
-#   - `beadstore` : runs `dolt sql-server` (the shared local bead-store server)
-#   - `city`      : runs the Gas City controller (`gc start`) + the agent fleet
+# Runs the single `city` docker-compose service: the Gas City controller
+# (`gc start`), the gc-managed Dolt bead store (bridged to a host/port by the
+# entrypoint), and the agent fleet.
 #
 # It bundles everything needed to run a Gas City manually on a laptop:
 #   gc (built from source) + bd + dolt + node + claude-code + tmux + git.
@@ -65,14 +65,14 @@ ARG CLAUDE_CODE_VERSION=
 # libicu74 satisfies gc's runtime ICU linkage on ubuntu 24.04 (noble).
 RUN apt-get update -qq \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-      tmux git jq lsof procps util-linux \
+      tmux git jq lsof procps util-linux socat \
       ca-certificates openssh-client curl xz-utils \
       gettext-base libicu74 \
  && rm -rf /var/lib/apt/lists/*
 
 # --- dolt -------------------------------------------------------------------
-# The bead store's database engine. Runs as a SQL server in the `beadstore`
-# service and is also used by bd from the `city` service.
+# The bead store's database engine. gc manages the SQL server; bd is the
+# client the gastown pack drives it through.
 RUN curl -fsSL -o /tmp/dolt.tar.gz \
       "https://github.com/dolthub/dolt/releases/latest/download/dolt-linux-${TARGETARCH}.tar.gz" \
  && tar -xzf /tmp/dolt.tar.gz -C /opt \
@@ -139,5 +139,4 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 RUN git config --system http.postBuffer 524288000
 
 WORKDIR /workspace/city
-# Default to the city flow; the `beadstore` service overrides the entrypoint.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

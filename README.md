@@ -98,22 +98,30 @@ docker compose exec city bash -lc 'cd /workspace/rigs/rig1 && gc bd list'
 ## The bead store
 
 The bead store is the city's source of truth — every task, message, gate, and
-result lives there. In this prototype it is a **single local Dolt SQL server**
-running as its own compose service (`beadstore`):
+result lives there. In this prototype it is a **local Dolt SQL server** that gc
+manages for itself inside the `city` service, exposed as a host/port to the whole
+compose project:
 
-- It listens on **`beadstore:3307`** (host/port) on the compose network, so the
-  city — and anything else in the compose project, including `docker compose
-  exec` clients — can connect to it.
-- Its database files live in the **`beads-data` named volume**. This data is
-  **purely local and is never pushed to any git remote** — there is no
-  durability sync, by design. Keep the volume to keep your history; delete it
-  (`docker compose down -v`) to start fresh.
-- The port is also published to `127.0.0.1:3307` on your host, so you can point a
-  local MySQL/Dolt client at it if you want to poke around.
+- gc runs the Dolt server on a loopback port inside the container and owns its
+  whole lifecycle (creating databases, scopes, and metadata). The entrypoint
+  then bridges it (with `socat`) to **`0.0.0.0:3307`**, so it is reachable as
+  **`city:3307`** by anything else in the compose project and as
+  **`127.0.0.1:3307`** on your host (point a MySQL/Dolt client there to poke
+  around).
+- Its database files live under the mounted **`./workspace`** directory. This
+  data is **purely local and is never pushed to any git remote** — there is no
+  durability sync, by design. Keep the directory to keep your history; remove it
+  (or `docker compose down` then delete `./workspace`) to start fresh.
 
-This differs from the earlier `gascity-prototype`, which kept its bead store in
-embedded Dolt and periodically `dolt push`ed it to a separate GitHub repo. Here
-the store is a shared server with no remote.
+This differs from the earlier `gascity-prototype`, which periodically `dolt
+push`ed its bead store to a separate GitHub repo. Here the store is local with no
+remote.
+
+> Why gc-managed + a bridge rather than a standalone Dolt service? gc's managed
+> Dolt path "just works" — it creates the databases, bead scopes, and metadata
+> itself. Pointing the city at a *separate* Dolt server means gc's "external
+> endpoint" mode, which has a fiddly bootstrap. The bridge gives you the same
+> host/port access without that complexity.
 
 ## Rigs
 
@@ -130,8 +138,8 @@ docker compose up -d --build      # build + start
 docker compose logs -f city       # follow the controller
 docker compose exec city gc status
 docker compose restart city       # restart the controller, keep state
-docker compose down               # stop (keeps the beads-data volume)
-docker compose down -v            # stop and WIPE the bead store
+docker compose down               # stop (keeps ./workspace, so state survives)
+docker compose down && rm -rf ./workspace   # stop and WIPE all state + bead store
 ```
 
 ### Keeping costs in check
@@ -144,29 +152,35 @@ you want to work; the bead store keeps your state.
 ## Architecture
 
 ```
-        ┌─────────────────────────────────────────────────────────────┐
-        │  docker compose project: software-factory-prototype          │
-        │                                                              │
-        │   ┌──────────────────────────┐     ┌───────────────────────┐ │
-        │   │  city                    │     │  beadstore            │ │
-        │   │  ──────                  │     │  ─────────            │ │
-        │   │  gc start (controller)   │ TCP │  dolt sql-server      │ │
-        │   │   ├ mayor   (claude)     │────▶│  beadstore:3307       │ │
-        │   │   ├ deacon  (claude)     │     │                       │ │
-        │   │   ├ boot    (claude)     │     │  data: beads-data vol │ │
-        │   │   ├ rig observers/...    │     │  (local, NOT synced)  │ │
-        │   │   └ worker pool (0..N)   │     └───────────────────────┘ │
-        │   │  /workspace (bind mount) │                               │
-        │   │   ├ city/  rigs/rig1/    │                               │
-        │   └──────────────────────────┘                               │
-        └──────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  docker compose project: software-factory-prototype                    │
+   │                                                                        │
+   │   ┌──────────────────────────────────────────────────────────────┐    │
+   │   │  city  (one container)                                        │    │
+   │   │  ─────                                                        │    │
+   │   │  gc start (controller)                                        │    │
+   │   │   ├ mayor / deacon / boot   (claude in tmux)                  │    │
+   │   │   ├ rig1 / rig2 observers & dispatchers                       │    │
+   │   │   └ worker / dog pools (0..N)                                 │    │
+   │   │                                                               │    │
+   │   │  gc-managed dolt sql-server (loopback)                        │    │
+   │   │         ▲                                                     │    │
+   │   │         │ socat bridge                                        │    │
+   │   │   0.0.0.0:3307  ──►  reachable as city:3307 (compose net)     │    │
+   │   │                      and 127.0.0.1:3307 (host)                │    │
+   │   │                                                               │    │
+   │   │  /workspace (bind mount): city/ · rigs/rig1 · rigs/rig2 ·     │    │
+   │   │                           bead-store data (local, NOT synced) │    │
+   │   └──────────────────────────────────────────────────────────────┘    │
+   └──────────────────────────────────────────────────────────────────────┘
                               │ outbound HTTPS
                               ▼
                     api.anthropic.com  (your Claude subscription)
 ```
 
-- **One image, two services.** Both `city` and `beadstore` run the same image;
-  `beadstore` overrides the entrypoint to run `dolt sql-server`.
+- **One image, one service.** gc runs the controller, the managed Dolt bead
+  store, and the agent fleet in the single `city` container; a socat bridge
+  republishes the bead store on a host/port.
 - **Agents talk through beads, not directly.** The controller reconciles the
   desired agent set, spawns each as a `claude` process in a tmux pane, and routes
   work via beads in the shared store.
@@ -178,10 +192,9 @@ this maps onto the v4 architecture.
 
 ```
 software-factory-prototype/
-├── Dockerfile                  Builds gc from source; installs dolt + bd + node + claude
-├── docker-compose.yml          The beadstore + city services
-├── entrypoint.sh               city service: render config, provision rigs, gc start
-├── beadstore-entrypoint.sh     beadstore service: run dolt sql-server (TCP, no remote)
+├── Dockerfile                  Builds gc from source; installs dolt + bd + node + claude + socat
+├── docker-compose.yml          The single `city` service (publishes bead store on 3307)
+├── entrypoint.sh               Render config, provision rigs, bridge the bead store, gc start
 ├── city.toml.example           Templated city config (envsubst'd at startup)
 ├── pack/pack.toml              Imports the bundled gastown role pack
 ├── .env.example                Subscription-auth + rig config template

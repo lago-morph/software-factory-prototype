@@ -33,13 +33,14 @@ formula_v2 = true
 # (no separate process to babysit, no external-endpoint bootstrap dance).
 provider = "bd"
 
-[dolt]
-# gc-managed Dolt SQL server. host = "0.0.0.0" + the published 3307 port makes the
-# bead store reachable as a host/port by the whole compose project (city:3307)
-# and from the host (127.0.0.1:3307). The database files live under the mounted
-# /workspace and are NEVER pushed to a git remote — this store is local-only.
-host = "0.0.0.0"
-port = 3307
+# NOTE: no [dolt] section on purpose. gc manages the Dolt SQL server with its
+# own defaults (a deterministic port hashed from the city path, bound to
+# 127.0.0.1 inside the container). The entrypoint bridges 0.0.0.0:3307 ->
+# that port (socat) so the store is reachable as a host/port by the whole
+# compose project (city:3307) and from the host (127.0.0.1:3307). The database
+# files live under the mounted /workspace and are NEVER pushed to a git remote —
+# this store is local-only. (Pinning [dolt].port here breaks the managed Dolt
+# lifecycle in gc 1.1.1, so we discover the real port at runtime instead.)
 
 [orders]
 max_timeout = "10m"

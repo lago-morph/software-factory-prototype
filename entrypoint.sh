@@ -111,9 +111,32 @@ if [ ! -f "${CITY_DIR}/packs.lock" ]; then
   gc import install 2>&1 | sed 's/^/[gc import] /' || { log "gc import install failed"; exit 1; }
 fi
 
-# ---------- 6. start the controller ----------
-# gc start brings up the gc-managed Dolt SQL server (bound per city.toml [dolt],
-# host 0.0.0.0:3307) and initializes the city/rig bead scopes against it, then
-# reconciles the agent fleet.
+# ---------- 6. publish the bead store on a stable host/port ----------
+# gc manages the Dolt SQL server on a deterministic, loopback-only port. Bridge
+# it to 0.0.0.0:${BEADS_PUBLISH_PORT} so the whole compose project (and the
+# published host port) can reach the bead store by host/port. Runs in the
+# background; it waits for gc to bring the server up, then starts socat. After
+# `exec gc start` replaces this shell, tini (init: true) reaps the bridge.
+BEADS_PUBLISH_PORT="${BEADS_PUBLISH_PORT:-3307}"
+DOLT_STATE="${CITY_DIR}/.gc/runtime/packs/dolt/dolt-state.json"
+(
+  for _ in $(seq 1 120); do
+    if [ -f "$DOLT_STATE" ]; then
+      port="$(jq -r '.port // empty' "$DOLT_STATE" 2>/dev/null || true)"
+      running="$(jq -r '.running // false' "$DOLT_STATE" 2>/dev/null || true)"
+      if [ -n "$port" ] && [ "$running" = "true" ]; then
+        log "bridging bead store 0.0.0.0:${BEADS_PUBLISH_PORT} -> 127.0.0.1:${port}"
+        exec socat "TCP-LISTEN:${BEADS_PUBLISH_PORT},bind=0.0.0.0,fork,reuseaddr" \
+                   "TCP:127.0.0.1:${port}"
+      fi
+    fi
+    sleep 2
+  done
+  log "WARNING: managed Dolt port never appeared; bead store not published"
+) &
+
+# ---------- 7. start the controller ----------
+# gc start brings up the gc-managed Dolt SQL server, initializes the city/rig
+# bead scopes against it, and reconciles the agent fleet.
 log "starting controller (foreground)"
 exec gc start --foreground

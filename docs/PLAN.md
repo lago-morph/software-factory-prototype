@@ -29,32 +29,36 @@ Explicitly deferred:
 
 ## Key decisions
 
-### Bead store: shared local Dolt server, no remote sync
+### Bead store: gc-managed local Dolt server, bridged to a host/port, no remote
 
 The operator asked for *"a local server that anyone in the docker compose group
 can access via a host/port, with a file it writes to that is not synced."*
 
-Implementation: a dedicated **`beadstore`** compose service runs `dolt
-sql-server` listening on TCP `beadstore:3307` (also published to
-`127.0.0.1:3307` on the host). Its database files live in the **`beads-data`
-named volume**. There is **no git remote and no `dolt push`** — the store is
-local-only and never synced. The city is pointed at it as an *external* Dolt
-endpoint (`gc beads city use-external --host beadstore --port 3307`).
+Implementation: gc manages the Dolt SQL server itself inside the `city`
+container (its proven "managed" path — it creates the databases, bead scopes, and
+metadata). gc binds it to a deterministic loopback port; the entrypoint then
+bridges it with `socat` to `0.0.0.0:3307`, reachable as **`city:3307`** across the
+compose project and **`127.0.0.1:3307`** on the host. The database files live
+under the mounted **`./workspace`** directory. There is **no git remote and no
+`dolt push`** — the store is local-only and never synced.
 
-Why a real server (not embedded Dolt or the gc-native file provider):
+Why gc-managed + a bridge, not a dedicated Dolt service:
 
 - The bundled **gastown pack makes ~368 `gc bd` calls**, and `gc bd` is gated to
   *bd-contract* providers. The gc-native `provider = "file"` store disables
   `gc bd`, so the proven gastown fleet would not run on it. Keeping
   `provider = "bd"` keeps the fleet working.
-- A server (vs embedded single-writer Dolt) is what lets multiple agents — and
-  any other compose service or `docker compose exec` client — share the store
-  over a host/port, which is what the operator asked for.
+- A dedicated Dolt service would force gc's **external-endpoint** mode, which has
+  a fiddly bootstrap (gc has no `init` flag for it; `use-external` needs scope
+  metadata that only scope-init creates — a chicken-and-egg). The managed path
+  avoids all of that. The socat bridge gives the same host/port access.
+- Pinning `[dolt].port` (to force a nice 3307) breaks gc 1.1.1's managed Dolt
+  lifecycle, so we omit `[dolt]` entirely and discover the real (deterministic,
+  loopback) port at runtime from `.gc/runtime/packs/dolt/dolt-state.json`.
 
-Difference from the older `gascity-prototype`: that one ran embedded/managed Dolt
-*and* periodically `dolt push`ed to a separate `gascity-proto-beadstore` GitHub
-repo for durability. Here we drop the remote entirely; durability is "keep the
-named volume."
+Difference from the older `gascity-prototype`: that one periodically `dolt
+push`ed to a separate `gascity-proto-beadstore` GitHub repo for durability. Here
+we drop the remote entirely; durability is "keep `./workspace`."
 
 ### Auth: Claude subscription, not API key
 
@@ -87,32 +91,53 @@ Carried forward from the gascity-prototype and re-confirmed here:
 
 1. **`gc bd` requires a bd-contract provider** — the gc-native `file` provider
    disables it, so the gastown pack needs `provider = "bd"`.
-2. **`gc` talks to an external Dolt server over TCP host/port** — its bd-env
-   builder sets `BEADS_DOLT_SERVER_HOST/PORT/USER`, not a unix socket. So the
-   "shared socket" is a TCP socket (`beadstore:3307`).
-3. **Interactive `claude` has three first-run dialogs** (theme, trust-folder,
+2. **gc-managed Dolt is loopback-only and on a hashed port** — gc binds the
+   managed server to 127.0.0.1 on a deterministic port (hashed from the city
+   path); the `[dolt].host` field is a *connect* host and rejects `0.0.0.0`.
+   Setting `[dolt].port` to pin a nice port breaks the managed lifecycle in gc
+   1.1.1. So we omit `[dolt]`, read the live port from
+   `.gc/runtime/packs/dolt/dolt-state.json`, and `socat`-bridge it to
+   `0.0.0.0:3307` for compose-group/host access.
+3. **gc 1.1.1 config gotchas** — the workspace `provider` must be declared in a
+   `[providers.claude] base = "builtin:claude"` catalog entry; workspace
+   identity (`name`) belongs in `.gc/site.toml` (deprecated in `city.toml`).
+4. **Interactive `claude` has three first-run dialogs** (theme, trust-folder,
    bypass-permissions) that hang an agent forever if not pre-acked. Global acks
    are baked into the image's `~/.claude.json`; per-path `projects` acks are
    written by the entrypoint (it knows the runtime city/rig paths).
-4. **`claude --dangerously-skip-permissions` refuses to run as root** unless
+5. **`claude --dangerously-skip-permissions` refuses to run as root** unless
    `IS_SANDBOX=1` is set; the container is itself isolated, so it's set.
-5. **PID 1 must reap zombies** — `bd`/`dolt` spawn many short-lived children;
+6. **PID 1 must reap zombies** — `bd`/`dolt` spawn many short-lived children;
    compose `init: true` (tini) prevents a defunct-process pileup.
-6. **Don't import `maintenance` directly** — gastown imports it transitively;
+7. **Don't import `maintenance` directly** — gastown imports it transitively;
    a second import duplicates the `dog` agent and refuses startup.
-7. **Rig prefix collisions** — `rig1`/`rig2` both auto-derive prefix `ri`; set
+8. **Rig prefix collisions** — `rig1`/`rig2` both auto-derive prefix `ri`; set
    explicit `prefix = "r1"/"r2"` in city.toml.
-8. **gc needs CGO + ICU** — it pulls in Dolt's `go-icu-regex`; the builder needs
-   `libicu-dev`, the runtime needs `libicu74`, and builder/runtime glibc
-   generations must be compatible (bookworm-built runs on noble).
+9. **gc needs CGO + ICU, matched builder/runtime** — it pulls in Dolt's
+   `go-icu-regex`; the builder needs `libicu-dev` and the runtime needs the same
+   ICU major (build on ubuntu:24.04 = ICU 74 = the runtime, or gc fails to load
+   with a missing `libicu*.so.NN`).
 
 ## Verification status
 
-See the PR description for the exact, dated verification results from the build
-sandbox. In general: `gc` compiles from source; the image builds; the bead-store
-server starts and the city connects to it. End-to-end agent task execution
-depends on a live Claude subscription token and is exercised by the operator on
-the laptop.
+Verified in a Docker-enabled sandbox (2026-06-06, `gc` built from gascity
+`425ec63`, gc 1.1.1 / bd 1.0.4 / dolt 2.1.4 / node 22 / claude-code 2.1.x):
+
+- The image builds end-to-end (gc compiled from source; dolt, bd, node,
+  claude-code, socat installed); all tools run.
+- The city boots from the real entrypoint: pack imports install, rigs are
+  provisioned, gc starts the managed Dolt server, and bead scopes initialize
+  (~8 s to first working `gc bd`).
+- `gc bd create` / `gc bd list` work against the managed store; `gc status`
+  shows the full 9-agent gastown fleet configured.
+- The socat bridge republishes the bead store on `0.0.0.0:3307`; it is reachable
+  from a **separate container** on the compose network at `city:3307` (verified
+  by a cross-container TCP connect) and is published to `127.0.0.1:3307`.
+
+Not exercised here (by design — it spends the operator's subscription): agents
+were left without a token, so they stay in `stopped`/`reserved` state. Live
+end-to-end task execution (mayor dispatches a worker that does a rig task) is the
+operator's first run on the laptop with a real `CLAUDE_CODE_OAUTH_TOKEN`.
 
 ## How this maps onto v4
 
