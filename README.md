@@ -56,6 +56,10 @@ docker compose exec city gc status          # see the agent fleet
 docker compose exec city gc session list    # tmux sessions, one per agent
 ```
 
+> **New here?** [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) is the
+> plain-language walkthrough: the mental model, watching the agents live in
+> tmux, and a three-run tutorial (including running the example formula).
+
 To peek at what an agent is doing (each agent is a `claude` process in its own
 tmux pane):
 
