@@ -112,10 +112,12 @@ compose project:
   **`city:3307`** by anything else in the compose project and as
   **`127.0.0.1:3307`** on your host (point a MySQL/Dolt client there to poke
   around).
-- Its database files live under the mounted **`./workspace`** directory. This
+- Its database files live in a **named Docker volume** (`sfv4-workspace`). This
   data is **purely local and is never pushed to any git remote** — there is no
-  durability sync, by design. Keep the directory to keep your history; remove it
-  (or `docker compose down` then delete `./workspace`) to start fresh.
+  durability sync, by design. Keep the volume to keep your history; wipe it with
+  `docker compose down -v` to start fresh. (It's a named volume rather than a
+  host folder on purpose — Dolt is extremely slow on Docker Desktop's
+  Windows/macOS host mounts; the named volume lives in Docker's Linux VM.)
 
 This differs from the earlier `gascity-prototype`, which periodically `dolt
 push`ed its bead store to a separate GitHub repo. Here the store is local with no
@@ -142,8 +144,8 @@ docker compose up -d --build      # build + start
 docker compose logs -f city       # follow the controller
 docker compose exec city gc status
 docker compose restart city       # restart the controller, keep state
-docker compose down               # stop (keeps ./workspace, so state survives)
-docker compose down && rm -rf ./workspace   # stop and WIPE all state + bead store
+docker compose down               # stop (keeps the volume, so state survives)
+docker compose down -v            # stop and WIPE all state + bead store
 ```
 
 ### Keeping costs in check
@@ -173,7 +175,7 @@ you want to work; the bead store keeps your state.
    │   │   0.0.0.0:3307  ──►  reachable as city:3307 (compose net)     │    │
    │   │                      and 127.0.0.1:3307 (host)                │    │
    │   │                                                               │    │
-   │   │  /workspace (bind mount): city/ · rigs/rig1 · rigs/rig2 ·     │    │
+   │   │  /workspace (named volume): city/ · rigs/rig1 · rigs/rig2 ·   │    │
    │   │                           bead-store data (local, NOT synced) │    │
    │   └──────────────────────────────────────────────────────────────┘    │
    └──────────────────────────────────────────────────────────────────────┘

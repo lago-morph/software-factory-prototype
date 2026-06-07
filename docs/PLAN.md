@@ -39,7 +39,9 @@ container (its proven "managed" path — it creates the databases, bead scopes, 
 metadata). gc binds it to a deterministic loopback port; the entrypoint then
 bridges it with `socat` to `0.0.0.0:3307`, reachable as **`city:3307`** across the
 compose project and **`127.0.0.1:3307`** on the host. The database files live
-under the mounted **`./workspace`** directory. There is **no git remote and no
+in the **`sfv4-workspace`** named Docker volume (a named volume, not a host bind
+mount — Dolt is unusably slow on Docker Desktop's Windows/macOS host mounts).
+There is **no git remote and no
 `dolt push`** — the store is local-only and never synced.
 
 Why gc-managed + a bridge, not a dedicated Dolt service:
@@ -58,7 +60,7 @@ Why gc-managed + a bridge, not a dedicated Dolt service:
 
 Difference from the older `gascity-prototype`: that one periodically `dolt
 push`ed to a separate `gascity-proto-beadstore` GitHub repo for durability. Here
-we drop the remote entirely; durability is "keep `./workspace`."
+we drop the remote entirely; durability is "keep the `sfv4-workspace` volume."
 
 ### Auth: Claude subscription, not API key
 

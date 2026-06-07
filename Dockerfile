@@ -53,6 +53,9 @@ RUN make build \
 FROM ubuntu:24.04
 
 ARG TARGETARCH=amd64
+# Dolt release — PINNED (not "latest"). 2.1.4 is verified-good with this gc; a
+# newer "latest" once removed `sql-server --user`, so pin for reproducibility.
+ARG DOLT_VERSION=2.1.4
 # bd (Beads CLI) release. Proven-compatible with gc as of the gascity prototype.
 ARG BD_VERSION=1.0.4
 ARG BD_REPO=gastownhall/beads
@@ -74,7 +77,7 @@ RUN apt-get update -qq \
 # The bead store's database engine. gc manages the SQL server; bd is the
 # client the gastown pack drives it through.
 RUN curl -fsSL -o /tmp/dolt.tar.gz \
-      "https://github.com/dolthub/dolt/releases/latest/download/dolt-linux-${TARGETARCH}.tar.gz" \
+      "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/dolt-linux-${TARGETARCH}.tar.gz" \
  && tar -xzf /tmp/dolt.tar.gz -C /opt \
  && ln -s "/opt/dolt-linux-${TARGETARCH}/bin/dolt" /usr/local/bin/dolt \
  && rm /tmp/dolt.tar.gz \
