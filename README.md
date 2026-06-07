@@ -61,10 +61,10 @@ docker compose exec city gc session list    # tmux sessions, one per agent
 > tmux, and a three-run tutorial (including running the example formula).
 
 To peek at what an agent is doing (each agent is a `claude` process in its own
-tmux pane):
+tmux pane), use the session id from `gc session list`:
 
 ```bash
-docker compose exec city tmux -L software-factory-v4 capture-pane -t <session> -p
+docker compose exec city gc session peek <session-id>     # e.g. sfv-c2d (the mayor)
 ```
 
 ## Authentication — subscription, not API key
@@ -84,19 +84,21 @@ is the default and what most people on Max will use.
 ## Giving the city work (manual operation)
 
 The city is human-guided: it won't invent work for itself beyond routine
-housekeeping. You hand it tasks as **beads** in a rig's scope:
+housekeeping. You hand it tasks as **beads** scoped to a rig. Run `gc bd` from
+the **city** dir and name the rig with `--rig` (running it from the rig dir fails
+— gc resolves the city from `/workspace/city`):
 
 ```bash
 docker compose exec city bash -lc \
-  'cd /workspace/rigs/rig1 && gc bd create --type=task "rewrite the README"'
+  'cd /workspace/city && gc bd create --rig rig1 --type=task "rewrite the README"'
 ```
 
-The coordinator agent (gastown's *mayor*) notices the open bead, dispatches a
-worker, the worker does the task and commits, an optional reviewer checks it, and
-housekeeping closes it out. Inspect the bead graph any time:
+The coordinator agent (gastown's *mayor*) notices the open bead and dispatches
+the rig's worker (`rig1/claude`), which does the task and commits. Inspect the
+bead graph any time:
 
 ```bash
-docker compose exec city bash -lc 'cd /workspace/rigs/rig1 && gc bd list'
+docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
 ```
 
 ## The bead store
