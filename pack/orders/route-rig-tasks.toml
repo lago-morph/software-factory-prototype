@@ -1,0 +1,56 @@
+# Autonomous dispatch — route ready, unrouted rig task beads to their polecat.
+#
+# Without this, `gc bd create --rig rigN ...` sits `open` until the mayor next
+# wakes AND decides to route it: the mayor triages on a cadence (it does not
+# continuously poll) and may judge a bead not worth doing, so a freshly created
+# bead can wait indefinitely with no manual `gc session nudge` / `gc sling`.
+#
+# This order makes creation hands-off. The controller runs the script directly
+# (an `exec` order — no LLM, no agent, no token spend) every `interval`. For each
+# registered rig it finds the *top-level, unrouted, open* task beads and slings
+# each to that rig's `gastown.polecat` on the `sf-small-task` formula — exactly
+# the manual dispatch the docs describe, just automatic and on a cadence. Once a
+# bead is slung its `gc.routed_to` is set, so the next tick skips it (idempotent).
+#
+# It deliberately routes task beads directly, side-stepping the mayor's triage
+# (which can otherwise silently decline a bead). The mayor, `gc session nudge`,
+# and `gc sling` all still work as manual overrides.
+#
+# Excluded from routing (so the order never re-pours formula scaffolding):
+#   - non-task beads (issue_type != "task")
+#   - already-routed beads (gc.routed_to set) — incl. the mayor's own routes
+#   - molecule step beads (gc.step_ref set) and members (gc.root_bead_id set)
+#   - molecule roots / workflow beads (gc.kind == "workflow")
+#   - anything not `open` (in_progress / closed)
+#
+# The rig list comes from RIG1_NAME / RIG2_NAME (the same env the compose file
+# and entrypoint use), so renaming a rig in .env needs no edit here.
+
+[order]
+description = "Autonomously sling ready, unrouted rig task beads to each rig's polecat (no mayor nudge needed)."
+trigger = "cooldown"
+interval = "30s"
+exec = '''
+cd "${GC_CITY:-/workspace/city}" || exit 1
+for rn in "${RIG1_NAME:-}" "${RIG2_NAME:-}"; do
+  [ -n "$rn" ] || continue
+  ids=$(gc bd list --rig "$rn" --json 2>/dev/null | jq -r '
+    .[]
+    | select(
+        .issue_type == "task"
+        and .status == "open"
+        and ((.metadata."gc.routed_to"    // "") == "")
+        and ((.metadata."gc.step_ref"     // "") == "")
+        and ((.metadata."gc.root_bead_id" // "") == "")
+        and ((.metadata."gc.kind"         // "") != "workflow")
+      )
+    | .id')
+  for id in $ids; do
+    if gc sling "$rn/gastown.polecat" "$id" --on sf-small-task >/dev/null 2>&1; then
+      echo "route-rig-tasks: slung $rn task $id -> $rn/gastown.polecat (sf-small-task)"
+    else
+      echo "route-rig-tasks: WARN sling failed for $rn task $id" >&2
+    fi
+  done
+done
+'''

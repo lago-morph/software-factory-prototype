@@ -83,39 +83,49 @@ is the default and what most people on Max will use.
 
 ## Giving the city work
 
-You hand the city a task as a **bead**; the native gastown agents take it from
-there. Create it from the **city** dir with `--rig`:
+You hand the city a task as a **bead**; the city then works it on its own — no
+further commands. Create it from the **city** dir with `--rig`:
 
 ```bash
 docker compose exec city bash -lc \
   'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1"'
 ```
 
-The **mayor** (the coordinator) triages open work and routes the actionable
-beads to the rig's **polecat** worker; the polecat does the task and commits on a
-worktree branch, and the **refinery** merges that branch into the rig. This whole
-pipeline — route → polecat works → refinery merges → bead closes — is automatic
-once the mayor routes the bead. (Verified end-to-end: a real
-`Add … description … README` commit merged into `rig1` main with the bead closed.)
+That's the whole interaction. Within about a minute the bead is routed to the
+rig's **polecat** worker; the polecat does the task and commits on a worktree
+branch, and the **refinery** merges that branch into the rig and closes the bead.
+A small task goes `open → routed → in_progress → committed → merged → closed` in a
+few minutes, unattended. (Verified end-to-end with a real subscription token: a
+plain `gc bd create` produced a `CONTRIBUTING.md` commit that the refinery merged
+into `rig1` main, bead closed — no manual step.)
 
-Two practical notes:
+What makes it hands-off is a built-in controller order, **`route-rig-tasks`**
+([`pack/orders/route-rig-tasks.toml`](pack/orders/route-rig-tasks.toml)): every
+30s the controller slings ready, unrouted rig **task** beads to their polecat. It
+runs as a plain `exec` order (no agent, no token spend) and routes directly, so a
+created task bead never waits on the mayor's triage cadence.
 
-- **The mayor *triages* — it won't necessarily sling every bead.** If it decides
-  your bead isn't worth doing (or it's slow to wake — sessions are start-throttled),
-  give it a push, or route the bead yourself:
+**Manual override.** You don't need these for normal use, but they're there when
+you want to push a specific bead immediately, or route work the autonomous order
+won't (it only routes top-level `task` beads). Find the mayor and nudge it, or
+sling a bead yourself:
 
-  ```bash
-  docker compose exec city gc session list                    # find the gastown.mayor id
-  # nudge needs a message arg — it's the text handed to the mayor session:
-  docker compose exec city gc session nudge <mayor-id> "Check open beads and dispatch actionable work."
-  # …or dispatch explicitly:
-  docker compose exec city bash -lc \
-    'cd /workspace/city && gc sling rig1/gastown.polecat <bead-id> --on sf-small-task'
-  ```
+```bash
+docker compose exec city gc session list                    # find the gastown.mayor id
+# nudge needs a message arg — it's the text handed to the mayor session:
+docker compose exec city gc session nudge <mayor-id> "Check open beads and dispatch actionable work."
+# …or dispatch a specific bead explicitly:
+docker compose exec city bash -lc \
+  'cd /workspace/city && gc sling rig1/gastown.polecat <bead-id> --on sf-small-task'
+```
+
+A practical note:
 
 - **Plain `gc bd list` shows the *city* scope**, so a rig bead won't appear there
-  (this is why an un-routed bead can look like it "disappeared" — it's just sitting
-  `open` in the rig). List rig beads explicitly:
+  (this is why a not-yet-routed bead can look like it "disappeared" — it's just
+  sitting `open` in the rig for a moment). Note `gc bd list --rig rig1` also hides
+  `closed` beads by default, so once a task finishes use `gc bd show <bead-id>` to
+  see its final `closed` status. List rig beads explicitly:
 
 ```bash
 docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
@@ -248,6 +258,7 @@ software-factory-prototype/
 ├── entrypoint.sh               Render config, provision rigs, bridge the bead store, gc start
 ├── city.toml.example           Templated city config (envsubst'd at startup)
 ├── pack/pack.toml              Imports the bundled gastown role pack
+├── pack/orders/                Controller orders (route-rig-tasks → autonomous dispatch)
 ├── factory/                    Gate B1 backbone components (C20, C08/C09, C43, C29) + tests
 ├── .env.example                Subscription-auth + rig config template
 └── docs/PLAN.md                Design, decisions, verification status, v4 mapping

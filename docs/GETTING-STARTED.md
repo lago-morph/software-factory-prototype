@@ -19,7 +19,7 @@ of **agents**, a set of **rigs**, and a **bead store**.
 ```mermaid
 flowchart LR
   you([You]) -->|gc bd create| store[(Bead store)]
-  mayor[Mayor] -->|triages + routes| polecat[Polecat worker]
+  order[route-rig-tasks order] -->|auto-routes| polecat[Polecat worker]
   polecat -->|edits + commits branch| rig[Rig repo]
   refinery[Refinery] -->|merges branch| rig
 ```
@@ -34,19 +34,23 @@ The five words you need:
 | **Agent** | A long-running `claude` session with a role and a scope. The city runs one per role, each in its own tmux pane. |
 | **Formula** | A small recipe: a few steps wired into a graph that one agent walks top to bottom. |
 
-**How work flows (native gastown).** You create a bead. The **mayor** (the
-coordinator) triages the open beads and routes the actionable ones to a rig's
-**polecat** worker; the polecat does the task and commits on a worktree branch,
-and the **refinery** merges that branch into the rig and closes the bead. Once
-the mayor routes a bead, the rest is automatic.
+**How work flows.** You create a bead — that's the only step you take. A built-in
+controller order (`route-rig-tasks`) routes it to a rig's **polecat** worker
+within about a minute; the polecat does the task and commits on a worktree branch,
+and the **refinery** merges that branch into the rig and closes the bead. The city
+works your task end-to-end, unattended.
 
-> The mayor *triages* — it decides what's worth doing and otherwise waits for
-> you, so it may not sling a given bead on its own (and agents are start-throttled,
-> so they take a few minutes to wake). To push a specific bead, **nudge** the
-> mayor (`gc session nudge <mayor-id> "<message>"` — the message arg is required)
-> or route it yourself with `gc sling` (both shown in the tutorial below). A
-> created-but-unrouted bead just sits
-> `open` in the rig — it's not lost; `gc bd list --rig rig1` shows it.
+> **Where does the routing come from?** The `route-rig-tasks` order is a plain
+> controller `exec` that runs every 30s (no agent, no token spend); it slings
+> ready, unrouted rig *task* beads straight to their polecat. It deliberately
+> side-steps the **mayor's** triage (the coordinator that, in stock gastown,
+> decides what's worth doing and otherwise waits for you) so a created task bead
+> doesn't sit `open` waiting to be noticed. You can still drive the mayor by hand
+> — **nudge** it (`gc session nudge <mayor-id> "<message>"` — the message arg is
+> required) or route a specific bead yourself with `gc sling` — as a manual
+> override (both shown in the tutorial below). A just-created bead may sit `open`
+> in the rig for a few seconds before the order picks it up; `gc bd list --rig
+> rig1` shows it.
 
 ---
 
@@ -170,20 +174,40 @@ first time you try a new kind of task, something will be off.** That's normal �
 the win is how cheaply you can look at a pane, adjust, and try again, not whether
 it works on the first shot.
 
-### Run 1 — give the city a task
+### Run 1 — create a bead and the city works it
 
-Create a bead from the **city** dir with `--rig`:
+Create a bead from the **city** dir with `--rig`. This is the *only* command you
+run — there's no second step:
 
 ```bash
 docker compose exec city bash -lc \
   'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1"'
 ```
 
-The mayor triages open work and routes the actionable beads to a polecat worker;
-the polecat does the task and commits on a branch, and the refinery merges it
-into the rig. **But the mayor decides what's worth doing and may pass on your
-bead** (and agents are start-throttled, so they take a few minutes to wake). If
-your bead isn't moving after a few minutes, give the mayor a push:
+Now just watch. Within about a minute the `route-rig-tasks` order routes the bead
+to the rig's polecat (it sets `gc.routed_to` and the polecat pool scales `0→1`);
+the polecat walks **survey → implement → verify → report**, commits on a worktree
+branch, and the refinery merges it into the rig and closes the bead. A small task
+like this finishes in a few minutes, unattended. Watch it happen:
+
+```bash
+docker compose exec city gc session list                       # the rig1/gastown.polecat worker appears once routed
+docker compose exec city gc session peek <polecat-session-id>  # peek to watch it think
+docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'   # poll until it shows CLOSED
+```
+
+> **Watching progress.** A live event stream (`gc events --follow`) needs the
+> supervisor API (`gc supervisor start`), which this standalone deployment doesn't
+> run — so `gc session peek` plus polling `gc bd show <bead-id>` is how you watch.
+> Use `gc bd show <bead-id>` (not `gc bd list`) to see the final state: plain
+> `gc bd list` shows only the *city* scope, and even `gc bd list --rig rig1` hides
+> `closed` beads by default, so a finished task looks like it "vanished" from the
+> list when it has actually closed.
+
+**Manual override (optional).** You don't need this for normal use — the order
+above routes every task bead on its own. But if you want to push a bead the
+instant you create it, or route work the order won't (it only routes top-level
+`task` beads), drive the dispatch by hand. Nudge the mayor:
 
 ```bash
 docker compose exec city gc session list                   # find the gastown.mayor id
@@ -191,8 +215,8 @@ docker compose exec city gc session list                   # find the gastown.ma
 docker compose exec city gc session nudge <mayor-id> "Check open beads and dispatch actionable work."
 ```
 
-Or route the bead yourself — same outcome, no waiting on the mayor's judgment.
-This both sets `gc.routed_to` and spawns the worker:
+…or sling a specific bead yourself (this both sets `gc.routed_to` and spawns the
+worker; add `--dry-run` to preview without routing):
 
 ```bash
 docker compose exec city bash -lc '
@@ -200,23 +224,6 @@ docker compose exec city bash -lc '
   BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
   gc sling rig1/gastown.polecat "$BEAD" --on sf-small-task'
 ```
-
-(Add `--dry-run` to the `gc sling` to preview without routing.) Either way, watch
-it work — the `rig1/gastown.polecat` worker appears in `gc session list` once
-routed; peek it and watch it walk **survey → implement → verify → report**:
-
-```bash
-docker compose exec city gc session list                       # find the polecat session id
-docker compose exec city gc session peek <polecat-session-id>  # watch it work
-docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'   # poll until CLOSED
-```
-
-> **Where did my bead go?** Plain `gc bd list` shows the *city* scope, so a rig
-> bead won't appear there — use `gc bd list --rig rig1`. An un-routed bead just
-> sits `open` in the rig (not lost); the mayor either routes it or you nudge/sling
-> it. A live event stream (`gc events --follow`) needs the supervisor API (`gc
-> supervisor start`), which this standalone deployment doesn't run — so
-> `gc session peek` + polling `gc bd show` is how you watch progress.
 
 ### Run 2 — read the work graph
 
@@ -226,8 +233,9 @@ When the worker finishes, everything it did is in the bead store and the rig rep
 # the bead, now CLOSED, with the worker's report in its notes
 docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'
 
-# the four step-beads (survey/implement/verify/report) the formula created
-docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
+# the four step-beads (survey/implement/verify/report) the formula created;
+# --all includes the now-closed beads (the default list hides closed ones)
+docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1 --all'
 ```
 
 And confirm the actual change landed as a commit in the rig repo:

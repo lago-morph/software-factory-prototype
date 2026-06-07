@@ -24,7 +24,11 @@ Explicitly deferred:
 - The v4-specific agent pack (intent intake, spec linter, judge harness,
   CXDB/telemetry, self-healing loops — the C0x–C5x components). This prototype
   runs the **bundled gastown pack** so there is a working fleet day one.
-- Autonomous operation / scheduled order fan-out beyond gastown's defaults.
+- Broad autonomous operation / scheduled order fan-out beyond gastown's
+  defaults. (One narrow slice is now **in scope and shipped**: autonomous
+  *dispatch* of rig task beads — see the `route-rig-tasks` decision below.
+  Higher-level autonomy — intent intake, self-healing, eval-gated promotion —
+  remains deferred.)
 - Multi-host / scale concerns.
 
 ## Key decisions
@@ -74,6 +78,43 @@ is `claude setup-token` on the laptop → paste the OAuth token into `.env` as
 `RIG1_URL`/`RIG2_URL` empty (the default) makes the entrypoint `git init` two
 empty local rigs, so a first run needs zero external repositories — only a Claude
 subscription. Set the URLs to clone real projects instead.
+
+### Autonomous dispatch: a controller `exec` order, not a mayor policy change
+
+The goal for this iteration was that `gc bd create --rig rigN …` gets worked with
+**no manual nudge and no manual sling**. Out of the box it does not: the **mayor**
+(gastown's coordinator) wakes on a cadence + on nudges, *triages* the open beads,
+and idles — so a bead created after its last wake sits `open` until the next wake,
+and the mayor may decline it as not worth doing. (Both observed live: a bead went
+unseen until nudged, and the mayor once judged a test bead spurious.)
+
+The fix is [`pack/orders/route-rig-tasks.toml`](../pack/orders/route-rig-tasks.toml): a city-level
+**`exec` order** on a 30s `cooldown`. The controller runs its script directly (no
+agent, no LLM, no token spend) and, for each registered rig, slings the ready,
+unrouted, top-level **task** beads to that rig's `gastown.polecat` on the
+`sf-small-task` formula — the exact dispatch the docs describe, just automatic.
+
+Why this shape, over the alternatives we weighed:
+
+- **An `exec` order that slings directly (chosen)** side-steps the mayor's triage
+  entirely — a created task bead is dispatched regardless of whether the mayor
+  would have judged it worth doing — and costs nothing (controller-side script, no
+  agent wake). It mirrors the already-verified manual `gc sling`, so the
+  downstream pipeline (polecat → refinery → close) is unchanged.
+- **Loosening the `[daemon]` wake budget** (`max_wakes_per_tick`) only changes how
+  *fast* sessions materialize; it does not make the mayor route a bead it triaged
+  away, so it does not by itself give hands-off dispatch. Left at the default.
+- **A mayor prompt/policy change** to auto-sling every open bead is heavier,
+  diverges from gastown's mayor design, and still routes through an LLM wake per
+  cycle. Not needed once the order does the routing.
+
+The routing filter is deliberately narrow so the order never re-pours formula
+scaffolding: it selects only beads with `issue_type == "task"`, `status == "open"`,
+and **no** `gc.routed_to` / `gc.step_ref` / `gc.root_bead_id`, and `gc.kind !=
+"workflow"`. That excludes already-routed beads (including the mayor's own routes),
+molecule step-beads and members, and molecule/workflow roots. Once a bead is slung
+its `gc.routed_to` is set, so the next 30s tick skips it (idempotent). The mayor,
+`gc session nudge`, and `gc sling` all still work as manual overrides.
 
 ### Image: build everything in the Dockerfile (laptop-portable)
 
@@ -149,14 +190,31 @@ auto-scales 0→1, the polecat claims + commits on a worktree branch, and the
 `Add … description … README` commit (`542f2ef`) merged into `rig1` main, bead
 closed — no manual sling at the dispatch step.
 
-**One behavioral note:** the mayor *triages* — it does not blindly sling every
-open bead; it decides what's worth doing and otherwise waits for the operator (in
-the test it judged the bead spurious and waited). A single `gc session nudge` to
-the mayor made it route the bead and the pipeline fired. So hands-on dispatch is
-a `gc bd create` + (mayor picks it up, or `gc session nudge` / explicit
-`gc sling`). Making the mayor sling *every* open task bead unprompted would need
-a mayor-prompt/policy change or a routing order — a follow-up. Also: per-session
-`wake_budget` throttling delays agents materializing by a few minutes.
+**Autonomous dispatch verified live (2026-06-07, gc 1.2.1) — no nudge, no sling.**
+With the `route-rig-tasks` order shipped (see the decision above), a plain
+`gc bd create --rig rig1 --type=task "…"` reached `closed` fully unattended. The
+shipped `docker compose` stack was exercised (the real compose file + entrypoint,
+plus a sandbox-only CA override for the test network), with a real subscription
+token. Observed timeline from creation (bead `r1-1lz`): auto-routed to
+`rig1/gastown.polecat` at **t+69s** (the order's first applicable 30s tick) → the
+polecat claimed it (`in_progress`) at **t+194s** → the polecat committed
+`Add CONTRIBUTING.md …` on a worktree branch → the **refinery** merged it into
+`rig1` main (commit `7a691f9`) and the bead went **`closed`** at **~t+10m**. A
+real `CONTRIBUTING.md` landed on `rig1` main with no operator action at any step.
+The tokenless controller-side routing was also confirmed independently (a created
+bead's `gc.routed_to` is set within ~one 30s tick), and re-running the order
+re-slings nothing (idempotent). The manual overrides still work: `gc session
+nudge <mayor-id> "<message>"` returns 0 (`Nudged gastown.mayor`).
+
+**Behavioral note (now an override, not the default path):** the mayor still
+*triages* — it does not blindly sling every open bead, and on its own it may
+decline one. That no longer blocks dispatch, because `route-rig-tasks` routes task
+beads directly, side-stepping triage. `gc session nudge` / explicit `gc sling`
+remain available to push a specific bead or to route work the order won't (it only
+routes top-level `task` beads). Per-session `wake_budget` throttling still delays
+agents *materializing* by up to a tick or two (it does not affect whether a bead
+is routed), which is why a small task completes in a few minutes rather than
+seconds; it is left at the gastown default.
 
 ## How this maps onto v4
 
@@ -168,3 +226,7 @@ a mayor-prompt/policy change or a routing order — a follow-up. Also: per-sessi
 - The gastown pack is a stand-in for the future v4 pack (**C02** pack ABI). The
   v4-specific roles and the eval/telemetry/self-healing components (C10–C54) are
   the next build steps once manual operation is comfortable.
+- The `route-rig-tasks` order is a first, deliberately minimal slice of the v4
+  **autonomous dispatch** surface: a mechanical, no-LLM router that turns "create a
+  bead" into worked-and-merged. The v4 design layers intent intake, eval gating,
+  and self-healing on top of this seam — those remain deferred (see Scope).
