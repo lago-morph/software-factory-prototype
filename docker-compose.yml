@@ -40,12 +40,12 @@ services:
       # claude --dangerously-skip-permissions refuses to run as root unless this
       # is set. The container is itself an isolated environment, so it's safe.
       - IS_SANDBOX=1
-      # Skip gc's in-process "native" bead store and go straight to the bd path
-      # (the one the gastown pack uses anyway). Without this, gc retries the
-      # native store on every operation, each retry paying a preflight timeout
-      # and logging `native_store_unavailable`. Forcing the bd path removes that
-      # churn and the warning.
-      - GC_BEADS_FORCE_FALLBACK=1
+      # NOTE: we intentionally let gc use its in-process "native" bead store. It
+      # reads session/status snapshots directly (no `bd` subprocess per query),
+      # which on the fast named volume loads well within gc's 3s snapshot budget.
+      # Forcing the bd path (GC_BEADS_FORCE_FALLBACK=1) makes every snapshot read
+      # shell out to bd→Dolt and time out ("loading session snapshot timed out").
+      # Only set GC_BEADS_FORCE_FALLBACK=1 if the native store proves unusable.
     # Bead store (gc-managed Dolt) — reachable by the host at 127.0.0.1:3307.
     ports:
       - "127.0.0.1:3307:3307"
