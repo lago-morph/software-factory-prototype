@@ -1,11 +1,14 @@
 # HANDOFF — Software Factory v4 prototype (autonomous dispatch + doc fixes)
 
 **Read this first.** It is the complete pickup brief for the next session. The
-dockerized Gas City prototype in this repo is **working and verified live**; two
-follow-ups remain. Everything below is hard-won (often by booting the real
-container with a real token) — trust it and don't re-derive it.
+dockerized Gas City prototype in this repo is **working and verified live**,
+including **autonomous dispatch** — a plain `gc bd create --rig rigN …` is now
+worked end-to-end with no manual nudge or sling. The two follow-ups this brief
+originally scoped are **both done** (see §1 — kept for the record); §2–§5 are the
+durable state, build/test plumbing, and gotchas the next session still needs.
 
-Branch for all work (all three repos): `claude/software-factory-v4-setup-vTSqG`.
+Branch used for that work: `claude/stoic-ptolemy-Hvsiv` (PRs #9 and #10, both
+merged to `main`). For new work, branch fresh off `origin/main`.
 Git discipline: sign commits (`-S`, committer `noreply@anthropic.com`), feature
 branch → commit → push → **ready PR** → merge (the operator merges everything;
 merge after pushing). Repos in scope: `lago-morph/software-factory` (design +
@@ -14,20 +17,38 @@ implementation), `lago-morph/gascity-prototype` (reference only).
 
 ---
 
-## 1. The two tasks for the next session
+## 1. The two tasks — both DONE (kept for the record)
 
-### Task #1 — fix the `gc session nudge` doc bug (small, verified)
+### Task #1 — fix the `gc session nudge` doc bug ✅ DONE (PR #9, merged)
 `gc session nudge` requires a **message** arg: `gc session nudge <id-or-alias>
-<message...>`. The docs show it without the message (`gc session nudge
-<mayor-id>`), which errors `requires at least 2 arg(s), only received 1`.
-- Files: `README.md`, `docs/GETTING-STARTED.md` (grep `gc session nudge`).
-- Fix to: `gc session nudge <mayor-id> "Check open beads and dispatch actionable work."`
-- Acceptance: every documented `gc session nudge` includes a quoted message.
+<message...>` (cobra `MinimumNArgs(2)`); the bare form errors `requires at least 2
+arg(s), only received 1`. Every documented invocation in `README.md` and
+`docs/GETTING-STARTED.md` now passes a quoted message. Live-confirmed:
+`gc session nudge <mayor-id> "Check open beads and dispatch actionable work."`
+prints `Nudged gastown.mayor`, exit 0.
 
-### Task #2 — autonomous dispatch (the real feature) + update docs accordingly
+### Task #2 — autonomous dispatch ✅ DONE (PR #10, merged)
+Implemented as a city-level **`exec` order**,
+[`pack/orders/route-rig-tasks.toml`](../pack/orders/route-rig-tasks.toml), on a
+30s `cooldown`: the controller (no agent, no LLM, no token spend) slings ready,
+unrouted, top-level **task** beads in each rig directly to that rig's
+`gastown.polecat` on `sf-small-task`, side-stepping the mayor's triage. The filter
+selects only `issue_type=task` + `status=open` with **no** `gc.routed_to` /
+`gc.step_ref` / `gc.root_bead_id` and `gc.kind != "workflow"`, so it never
+re-pours molecule scaffolding and is idempotent. `entrypoint.sh` now symlinks the
+pack's `orders/` dir into the city scope (gc scans an `orders/` dir beside each
+formula layer). Approach (b) loosening the wake budget and (c) a mayor-policy
+change were considered and rejected — see [`docs/PLAN.md`](PLAN.md) "Autonomous
+dispatch" decision. **Verified live** (shipped `docker compose`, real token): a
+plain `gc bd create --rig rig1` auto-routed at t+69s → `in_progress` → polecat
+commit → refinery merged into `rig1` main → bead `closed`, ~10 min, unattended.
+
+The original problem statement, kept because the root-cause analysis is still the
+clearest explanation of *why* the order is needed:
+
 **Goal:** the operator runs `gc bd create --rig rigN …` and the city works it
-**without a manual nudge**. Today it does NOT, for two compounding reasons proven
-live:
+**without a manual nudge**. Before PR #10 it did NOT, for two compounding reasons
+proven live:
 1. **The mayor doesn't continuously poll.** It wakes on a cadence + on nudges,
    triages, then idles. A bead created after its last wake sits `open` until the
    next wake or a nudge. (Verified: a bead created 19 min after the mayor's last
@@ -43,28 +64,27 @@ worktree branch → the **refinery** merges it into the rig and closes the bead.
 (Verified: real commit `542f2ef` merged into `rig1` main; and again live with a
 plain `gc bd create` + one nudge.)
 
-**Approaches to evaluate (pick what works, verify live):**
-- (a) **An order that nudges the mayor when rig beads are open.** gastown ships
-  orders (see `examples/gastown/packs/gastown/orders/` in the gc source). A small
-  scheduled/event order that runs `gc session nudge <mayor> "route open work"` (or
-  directly `gc sling`s ready unrouted rig task beads to `rigN/gastown.polecat`)
-  on a cadence would give hands-off dispatch. This is likely the cleanest.
-- (b) **Loosen the wake budget** in `[daemon]` (city.toml) so the mayor wakes
-  often enough to pick up beads promptly. Find the wake-budget knob in the gc
-  source (`grep -rn wake_budget`/`WakeBudget` in `cmd/gc`). Combine with (a).
-- (c) **Mayor policy/prompt change** so it auto-slings open task beads instead of
-  triaging-and-waiting — heavier, and diverges from gastown's mayor design; only
-  if (a)+(b) are insufficient.
-- **Watch out:** the mayor *triages* (it judged a test bead "spurious" and
-  declined). Auto-dispatch must not be defeated by triage — an order that slings
-  ready beads directly side-steps the mayor's judgment.
+**Approaches that were evaluated (chosen: a, direct sling):**
+- (a) ✅ **An order that directly slings ready unrouted rig task beads** to
+  `rigN/gastown.polecat` on a cadence. **Chosen** — it side-steps the mayor's
+  triage entirely and costs nothing (controller-side `exec`, no agent wake). The
+  shipped form slings rather than nudges (nudging would still route through the
+  mayor's judgment); `exec` env gives `RIG1_NAME`/`RIG2_NAME` + the managed-Dolt
+  `GC_DOLT_*` so plain `gc bd`/`gc sling` work from the script.
+- (b) **Loosen the wake budget** (`[daemon].max_wakes_per_tick`, default 5):
+  rejected as a primary fix — it only changes how fast sessions materialize, not
+  whether the mayor routes a triaged-away bead. Left at default.
+- (c) **Mayor policy/prompt change**: rejected — heavier, diverges from gastown's
+  mayor design, and burns an LLM wake per cycle. Unnecessary once the order routes.
+- **Watch-out that drove the design:** the mayor *triages* (it judged a test bead
+  "spurious" and declined). The chosen order slings ready beads directly, so triage
+  cannot defeat auto-dispatch.
 
-**Acceptance for #2:** with a real token, `gc bd create --rig rig1 --type=task
-"…"` (NO nudge, NO manual sling) results, within a few minutes, in the bead going
-`in_progress` → a polecat committing → the refinery merging → bead `closed`.
-**Then update README + docs/GETTING-STARTED** so the tutorial's Run 1 is "create
-a bead and the city works it" (autonomous), with nudge/sling kept as the manual
-override. Update `docs/PLAN.md` verification status too.
+**Acceptance for #2 — met.** With a real token, a plain `gc bd create --rig rig1
+--type=task "…"` (NO nudge, NO sling) reached `in_progress` → polecat commit →
+refinery merge → `closed` unattended. README + `docs/GETTING-STARTED` Run 1 is now
+the autonomous "create a bead and the city works it" flow (nudge/sling kept as the
+manual override), and `docs/PLAN.md` records the decision + verification.
 
 ---
 
@@ -75,6 +95,13 @@ override. Update `docs/PLAN.md` verification status too.
   claude-code + tmux + socat. **Pinned set** (in `Dockerfile`, matches gascity
   `deps.env` at tag v1.2.1): `GASCITY_REF=v1.2.1`, `DOLT_VERSION=2.1.0`,
   `BD_VERSION=1.0.4`, `GO_VERSION=1.26.4`. Do not float to `main`/`latest`.
+- **Autonomous dispatch works**: the `route-rig-tasks` exec order
+  (`pack/orders/route-rig-tasks.toml`, 30s cooldown) auto-routes ready unrouted
+  rig **task** beads to their polecat with no nudge/sling — so a plain
+  `gc bd create --rig rigN …` is worked end-to-end (route → polecat commit →
+  refinery merge → close). Controller-side script (no token spend); the entrypoint
+  symlinks the pack's `orders/` dir into the city scope so gc discovers it.
+  `gc session nudge`/`gc sling` remain manual overrides.
 - **Bead store**: gc-managed Dolt on a hashed loopback port; the entrypoint
   socat-bridges it to `0.0.0.0:3307` (reachable as `city:3307` + host
   `127.0.0.1:3307`). **No `[dolt]` section** in city.toml (pinning the port
@@ -97,7 +124,9 @@ override. Update `docs/PLAN.md` verification status too.
   `gc sling rig1/gastown.polecat <bead> --on sf-small-task`.
 - Merged PRs: prototype #1–#7 (substrate, Gate B1 components in `factory/`, docs,
   Windows/native-store/git-init/version fixes, doc-command fixes, native
-  dispatch). Retrospectives in `software-factory`: `2026-06-06-1`, `2026-06-07-7`.
+  dispatch), then **#9** (nudge doc fix) and **#10** (autonomous dispatch order +
+  doc rewrite). Retrospectives in `software-factory`: `2026-06-06-1`,
+  `2026-06-07-7`.
 
 ---
 
@@ -162,11 +191,13 @@ files (they're laptop-clean); recreate it for testing only.
 - `docker-compose.yml` — single `city` service; named volume `sfv4-workspace`;
   publishes `127.0.0.1:3307`.
 - `entrypoint.sh` — renders city.toml, git-inits city, provisions local rigs,
+  symlinks pack `prompts/formulas/agents/orders` into the city scope,
   socat-bridges the bead store, `gc start --foreground`.
 - `city.toml.example` — `[beads] provider="bd"`, `[providers.claude]`, per-rig
   `[rigs.imports.gastown]`, no `[dolt]`.
 - `pack/pack.toml` — imports gastown (city agents); `pack/formulas/sf-small-task.toml`
-  — the 4-node example formula.
+  — the 4-node example formula; `pack/orders/route-rig-tasks.toml` — the
+  autonomous-dispatch exec order (30s cooldown).
 - `factory/` — Gate B1 backbone components (C20, C08/C09, C43, C29) + tests
   (`make -C factory test`).
 - `docs/PLAN.md`, `docs/GETTING-STARTED.md`, `README.md` — keep accurate to
