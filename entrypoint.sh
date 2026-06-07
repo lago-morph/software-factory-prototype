@@ -71,6 +71,22 @@ name = "${RIG2_NAME}"
 path = "${RIGS_DIR}/${RIG2_NAME}"
 EOF
 
+# ---------- 3b. make the city scope a git repo ----------
+# bd resolves a scope's context via its git repository root. The city dir lives
+# in a volume and is not otherwise a git repo, so `bd context` fails there with
+# "not a git repository" — which makes gc's bd_context_agreement preflight fail
+# and log `native_store_unavailable ... scope=/workspace/city` (the bead store is
+# fine; only scope resolution trips). git-init the city dir so bd can resolve it.
+# .beads/ and .gc/ (the live store + runtime) are ignored, not committed.
+if [ ! -d "${CITY_DIR}/.git" ]; then
+  log "initializing city scope as a git repo (for bd context resolution)"
+  git -C "$CITY_DIR" init -q
+  printf '.beads/\n.gc/\n' > "${CITY_DIR}/.gitignore"
+  git -C "$CITY_DIR" -c user.email=city@local -c user.name="Software Factory" add -A 2>/dev/null || true
+  git -C "$CITY_DIR" -c user.email=city@local -c user.name="Software Factory" \
+    commit -q -m "Initialize city scope" 2>/dev/null || true
+fi
+
 # ---------- 4. provision rigs ----------
 provision_rig() {
   local name=$1 url=$2 branch=$3
