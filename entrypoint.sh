@@ -51,7 +51,10 @@ JEOF
 log "rendering city.toml from template"
 envsubst < /pack/city.toml.example > "${CITY_DIR}/city.toml"
 cp /pack/pack.toml "${CITY_DIR}/pack.toml"
-for sub in prompts formulas agents; do
+# `orders` is symlinked alongside formulas so gc discovers the city-level orders
+# (it scans an `orders/` dir beside each formula layer). The route-rig-tasks
+# order lives there and drives autonomous dispatch.
+for sub in prompts formulas agents orders; do
   if [ -d "/pack/${sub}" ] && [ ! -e "${CITY_DIR}/${sub}" ]; then
     ln -s "/pack/${sub}" "${CITY_DIR}/${sub}"
   fi
