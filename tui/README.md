@@ -23,9 +23,12 @@ docker compose exec city sftui
 (`sftui` is a shim for `python3 /opt/tui/beadview.py`.) It is **stdlib Python +
 curses** — no pip, no network.
 
-> **Status: v0.1 placeholder.** `beadview.py` currently just explains itself.
-> The first real version is produced by the prototype's own build loop (see
-> below), reviewed, merged, and baked in on the next image build.
+> **Status: chunk-1 built and verified in-sandbox.** `beadview.py` here is the
+> v0.1 produced by the prototype's **own build loop** (the dogfood below) and
+> verified end-to-end: the image builds, `sftui --dump` lists beads across all
+> scopes in the running container, and the chunk-1 bead built the file
+> autonomously (created → routed → polecat commit → refinery merge, ~15 min).
+> Later rungs extend it.
 
 ## How it gets built (dogfood)
 
@@ -64,11 +67,13 @@ before merge + image rebuild** — a human gate before the container modifies th
 files that build it (the same review ethos as the backbone's C52/C53 gate).
 Leave `RIG1_URL` / `RIG_PUSH_TOKEN` empty for the normal self-contained demo.
 
-> **Not yet exercised — but it can be, right here.** The image wiring (python3,
-> `sftui` shim, the `tui/` bake) and the build-rig credential plumbing were
-> authored from source and not yet run. **Docker is available in the sandbox** —
-> start the daemon with `sudo dockerd >/tmp/dockerd.log 2>&1 &` (a SessionStart
-> hook does this automatically). The full build + live-test recipe (CA injection
-> for the build proxy, the real token, compose override) is in
-> [`../docs/HANDOFF.md`](../docs/HANDOFF.md) §3. Build and run the real stack to
-> verify before relying on these.
+> **Verified in-sandbox.** The image wiring (python3, `sftui` shim, the `tui/`
+> bake) and the chunk-1 dogfood build were exercised end-to-end in the Claude
+> Code sandbox — the image builds, `sftui --dump` works in the running container,
+> and the chunk-1 bead built `beadview.py` autonomously. Docker is available in
+> the sandbox: start the daemon with `sudo dockerd >/tmp/dockerd.log 2>&1 &` (a
+> SessionStart hook does this automatically); the full build + live-test recipe
+> (CA injection for the build proxy, the real token, compose override) is in
+> [`../docs/HANDOFF.md`](../docs/HANDOFF.md) §3. (The opt-in build-rig push-back
+> path above is the one part not yet exercised — chunk-1 was built into the
+> default local rig.)
