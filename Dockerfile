@@ -73,6 +73,7 @@ RUN apt-get update -qq \
       tmux git jq lsof procps util-linux socat \
       ca-certificates openssh-client curl xz-utils \
       gettext-base libicu74 \
+      python3 \
  && rm -rf /var/lib/apt/lists/*
 
 # --- dolt -------------------------------------------------------------------
@@ -136,6 +137,16 @@ RUN mkdir -p /workspace/city /workspace/rigs /pack
 # path. Bind-mount ./pack in compose to live-edit it.
 COPY pack /pack
 COPY city.toml.example /pack/city.toml.example
+
+# --- progress-tracker TUI (operator instrument) -----------------------------
+# The "Gascity progress tracker" ships baked into the image and runs via the
+# `sftui` shim (`docker compose exec city sftui`). It is stdlib-Python + curses
+# (hence python3 in the apt set above — no pip, no network). v0.1 is produced by
+# the chunk-1 dogfood build and PR'd into tui/; until then tui/beadview.py is a
+# placeholder. See tui/README.md.
+COPY tui /opt/tui
+RUN printf '#!/usr/bin/env bash\nexec python3 /opt/tui/beadview.py "$@"\n' > /usr/local/bin/sftui \
+ && chmod +x /usr/local/bin/sftui
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -249,6 +249,23 @@ make -C factory test     # run every component's self-test
 Later gates (not yet built): the evaluation tier C30–C33 (B2), the C34 holdout
 half (B3), and the bootstrap loop C51–C53 (B3).
 
+## The progress-tracker TUI (operator instrument)
+
+The [`tui/`](tui/) directory ships the **Gascity progress tracker** — a
+read-only terminal viewer for watching the factory work (bead flow through
+sessions, bead contents, commit diffs, formulas). It is baked into the city
+image and run with:
+
+```bash
+docker compose exec city sftui
+```
+
+It is an **operator instrument built alongside** the v4 backbone (not one of the
+25 components), built by the prototype itself in small dogfood chunks. See
+[`tui/README.md`](tui/README.md) for the chunk ladder, the run shim, and the
+optional build-rig setup. (Status: v0.1 placeholder; the image wiring is not yet
+verified under `docker compose` — see [`tui/README.md`](tui/README.md).)
+
 ## Repository layout
 
 ```
@@ -260,6 +277,7 @@ software-factory-prototype/
 ├── pack/pack.toml              Imports the bundled gastown role pack
 ├── pack/orders/                Controller orders (route-rig-tasks → autonomous dispatch)
 ├── factory/                    Gate B1 backbone components (C20, C08/C09, C43, C29) + tests
+├── tui/                        Progress-tracker TUI (operator instrument; `sftui` in the image)
 ├── .env.example                Subscription-auth + rig config template
 └── docs/PLAN.md                Design, decisions, verification status, v4 mapping
 ```

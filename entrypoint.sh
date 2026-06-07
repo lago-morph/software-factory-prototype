@@ -91,17 +91,37 @@ if [ ! -d "${CITY_DIR}/.git" ]; then
 fi
 
 # ---------- 4. provision rigs ----------
+# Optional push credentials for a cloned rig (DEFAULT-INERT). Only fires when the
+# rig has a URL and RIG_PUSH_TOKEN is set; it embeds the token into the rig's
+# local origin URL (inside the local-only /workspace volume) and sets a committer
+# identity, so a rig pointed at a real repo — e.g. THIS repo, to build the
+# progress-tracker TUI — can push a branch back out for operator review. With no
+# token set (the default) this is a no-op and the verified empty-rig path is
+# unchanged.
+configure_rig_push() {
+  local dest=$1 url=$2
+  [ -n "$url" ] && [ -n "${RIG_PUSH_TOKEN:-}" ] && [ -d "${dest}/.git" ] || return 0
+  local authurl
+  authurl="$(printf '%s' "$url" | sed -E "s#^https://#https://x-access-token:${RIG_PUSH_TOKEN}@#")"
+  git -C "$dest" remote set-url origin "$authurl"
+  git -C "$dest" config user.email "${RIG_COMMIT_EMAIL:-factory-tui@local}"
+  git -C "$dest" config user.name "${RIG_COMMIT_NAME:-Software Factory TUI build}"
+  log "rig: push credentials configured from RIG_PUSH_TOKEN"
+}
+
 provision_rig() {
   local name=$1 url=$2 branch=$3
   local dest="${RIGS_DIR}/${name}"
   if [ -d "${dest}/.git" ]; then
     log "rig ${name}: already present"
     [ -n "$url" ] && git -C "$dest" fetch --quiet origin "$branch" 2>/dev/null || true
+    configure_rig_push "$dest" "$url"
     return
   fi
   if [ -n "$url" ]; then
     log "rig ${name}: cloning ${url} (branch ${branch})"
     git clone --quiet --branch "$branch" "$url" "$dest"
+    configure_rig_push "$dest" "$url"
   else
     log "rig ${name}: initializing empty local repo"
     mkdir -p "$dest"
