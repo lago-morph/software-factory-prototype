@@ -106,7 +106,8 @@ Two practical notes:
 
   ```bash
   docker compose exec city gc session list                    # find the gastown.mayor id
-  docker compose exec city gc session nudge <mayor-id>        # tell it to route open work
+  # nudge needs a message arg — it's the text handed to the mayor session:
+  docker compose exec city gc session nudge <mayor-id> "Check open beads and dispatch actionable work."
   # …or dispatch explicitly:
   docker compose exec city bash -lc \
     'cd /workspace/city && gc sling rig1/gastown.polecat <bead-id> --on sf-small-task'

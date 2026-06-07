@@ -43,8 +43,9 @@ the mayor routes a bead, the rest is automatic.
 > The mayor *triages* — it decides what's worth doing and otherwise waits for
 > you, so it may not sling a given bead on its own (and agents are start-throttled,
 > so they take a few minutes to wake). To push a specific bead, **nudge** the
-> mayor (`gc session nudge <mayor-id>`) or route it yourself with `gc sling`
-> (both shown in the tutorial below). A created-but-unrouted bead just sits
+> mayor (`gc session nudge <mayor-id> "<message>"` — the message arg is required)
+> or route it yourself with `gc sling` (both shown in the tutorial below). A
+> created-but-unrouted bead just sits
 > `open` in the rig — it's not lost; `gc bd list --rig rig1` shows it.
 
 ---
@@ -186,7 +187,8 @@ your bead isn't moving after a few minutes, give the mayor a push:
 
 ```bash
 docker compose exec city gc session list                   # find the gastown.mayor id
-docker compose exec city gc session nudge <mayor-id>       # tell it to route open work
+# nudge requires a message arg (the text handed to the mayor session):
+docker compose exec city gc session nudge <mayor-id> "Check open beads and dispatch actionable work."
 ```
 
 Or route the bead yourself — same outcome, no waiting on the mayor's judgment.
