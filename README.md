@@ -83,19 +83,26 @@ is the default and what most people on Max will use.
 
 ## Giving the city work (manual operation)
 
-The city is human-guided: it won't invent work for itself beyond routine
-housekeeping. You hand it tasks as **beads** scoped to a rig. Run `gc bd` from
-the **city** dir and name the rig with `--rig` (running it from the rig dir fails
-— gc resolves the city from `/workspace/city`):
+The city is **human-guided: you dispatch the work**. The mayor and the rest of
+the fleet do housekeeping; they do **not** auto-pick-up tasks you create in a
+rig. The reliable, verified way to get a task done is to create a bead and then
+**sling** it at the rig's worker with a formula attached — that both routes the
+bead and spawns the worker:
 
 ```bash
-docker compose exec city bash -lc \
-  'cd /workspace/city && gc bd create --rig rig1 --type=task "rewrite the README"'
+docker compose exec city bash -lc '
+  cd /workspace/city &&
+  BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note" --json | jq -r .id) &&
+  gc sling rig1/claude "$BEAD" --on sf-small-task'
 ```
 
-The coordinator agent (gastown's *mayor*) notices the open bead and dispatches
-the rig's worker (`rig1/claude`), which does the task and commits. Inspect the
-bead graph any time:
+The `rig1/claude` worker then walks the `sf-small-task` formula
+(survey → implement → verify → report), commits, and closes the bead.
+
+> **A bead you create but don't sling just sits `open` in the rig scope — it is
+> not lost and nothing works it.** Plain `gc bd list` shows the *city* scope, so
+> a rig bead won't appear there (this is why it can look like it "disappeared").
+> List rig beads explicitly:
 
 ```bash
 docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
