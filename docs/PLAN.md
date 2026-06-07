@@ -136,10 +136,22 @@ Verified in a Docker-enabled sandbox (2026-06-06, `gc` built from gascity
   from a **separate container** on the compose network at `city:3307` (verified
   by a cross-container TCP connect) and is published to `127.0.0.1:3307`.
 
-Not exercised here (by design — it spends the operator's subscription): agents
-were left without a token, so they stay in `stopped`/`reserved` state. Live
-end-to-end task execution (mayor dispatches a worker that does a rig task) is the
-operator's first run on the laptop with a real `CLAUDE_CODE_OAUTH_TOKEN`.
+**Live, real-token run (2026-06-07, gc 1.2.1):** with a real
+`CLAUDE_CODE_OAUTH_TOKEN` (+ the sandbox CA), agents authenticate and an
+**explicitly-slung** task runs end-to-end: `gc sling rig1/claude <bead> --on
+sf-small-task` spawns the `rig1/claude` worker, which walks survey → implement →
+verify → report, makes a real commit (`Add CONTRIBUTING.md note to rig1`), and
+closes the bead and its four step-beads. The formula path works.
+
+**Known limitation (human-guided by design):** there is **no autonomous
+dispatch** of rig-scope beads. A `gc bd create --rig rigN` bead lands in the rig
+scope, but the mayor's idle loop polls only the city scope, and per-rig workers
+are `min=0`, so an un-slung rig bead sits `open` indefinitely (and is invisible
+to a plain city-scope `gc bd list` — it must be listed with `--rig`). The
+operator dispatches work explicitly with `gc sling`. Wiring autonomous
+rig-bead→worker dispatch (a rig-watching order, or auto-spawning a worker for
+ready rig beads) is a follow-up; it is intentionally out of scope for a
+"100% human-guided" prototype.
 
 ## How this maps onto v4
 

@@ -18,11 +18,9 @@ of **agents**, a set of **rigs**, and a **bead store**.
 
 ```mermaid
 flowchart LR
-  you([You]) -->|create a bead| store[(Bead store)]
-  mayor[Mayor agent] -->|reads/writes| store
-  mayor -->|dispatches| worker[Worker agent]
+  you([You]) -->|gc sling + formula| worker[rig1/claude worker]
+  worker -->|reads/writes| store[(Bead store)]
   worker -->|edits + commits| rig[Rig repo]
-  worker -->|writes result| store
 ```
 
 The five words you need:
@@ -35,8 +33,12 @@ The five words you need:
 | **Agent** | A long-running `claude` session with a role and a scope. The city runs one per role, each in its own tmux pane. |
 | **Formula** | A small recipe: a few steps wired into a graph that one agent walks top to bottom. |
 
-The agents don't talk to each other directly — they talk **through beads**. You
-give the city work by creating a bead; the agents notice it and move it along.
+**This prototype is human-driven: *you* dispatch the work.** You create a bead
+and **sling** it at a rig's worker (`gc sling`), which then does the task and
+records the result back in the bead store. The mayor and the other standing
+agents do housekeeping — they do **not** auto-pick-up tasks you create in a rig.
+A bead you create but never sling just sits `open` in the rig; nothing works it
+until you sling it.
 
 ---
 
@@ -158,93 +160,93 @@ first time you try a new kind of task, something will be off.** That's normal �
 the win is how cheaply you can look at a pane, adjust, and try again, not whether
 it works on the first shot.
 
-### Run 1 — give the city a one-line task
+### Run 1 — dispatch a task (create **and** sling it)
 
-Create a bead scoped to a rig. Run `gc bd` from the **city** dir and name the rig
-with `--rig` (running `gc bd` from the rig dir fails — gc resolves the city from
-`/workspace/city`). The mayor watches for open beads and routes them.
+You drive the work: create a bead, then **sling** it at the rig's worker with the
+`sf-small-task` formula attached. The sling does two things — it routes the bead
+*and* spawns the `rig1/claude` worker (which sits at zero until there's work for
+it). Run `gc bd` from the **city** dir and name the rig with `--rig`:
 
 ```bash
-docker compose exec city bash -lc \
-  'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a one-line description to the top of README.md"'
+docker compose exec city bash -lc '
+  cd /workspace/city &&
+  BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
+  echo "dispatched $BEAD" &&
+  gc sling rig1/claude "$BEAD" --on sf-small-task'
 ```
 
-Now watch it move. Poll the bead's status in one terminal:
+(Add `--dry-run` to the `gc sling` to preview the dispatch without routing it.)
+
+Now watch it work. The `rig1/claude` worker appears in `gc session list` within
+~20s; peek it and watch it walk **survey → implement → verify → report**:
 
 ```bash
-docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
+docker compose exec city gc session list                      # find the rig1/claude session id
+docker compose exec city gc session peek <rig1-claude-id>     # watch it work
 ```
 
-and peek the mayor's pane (get its id from `gc session list`) to see it notice
-the bead and dispatch the rig worker (`rig1/claude`), which edits the file,
-commits, and marks the bead done:
+Poll the bead until it closes:
 
 ```bash
-docker compose exec city gc session peek <mayor-session-id>    # e.g. sfv-c2d
-```
-
-> A live event stream (`gc events --follow`) needs the machine-wide supervisor
-> running (`gc supervisor start`); this single-container deployment runs a
-> standalone controller, so polling `gc bd list` + `gc session peek` is the
-> simplest way to watch progress here.
-
-### Run 2 — read the work graph
-
-Everything the city did is in the bead store. Inspect it from the city dir:
-
-```bash
-# all beads in rig1's scope
-docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
-
-# the full detail of one bead, including the worker's notes (id looks like r1-ep8)
 docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'
 ```
 
-And confirm the actual change landed in the rig repo:
+> **Why not just `gc bd create` and wait?** Because nothing auto-dispatches it.
+> A bead you create but don't sling stays `open` in the rig scope forever — it is
+> **not** lost, but no agent picks it up. (And plain `gc bd list` shows the
+> *city* scope, so a rig bead won't even appear there — use `gc bd list --rig
+> rig1`. That mismatch is why an un-slung bead can look like it "disappeared.")
+> The mayor/deacon do housekeeping, not your task dispatch. **You** sling.
+>
+> A live event stream (`gc events --follow`) needs the supervisor API (`gc
+> supervisor start`), which this standalone single-container deployment doesn't
+> run — so `gc session peek` + polling `gc bd show` is how you watch progress.
+
+### Run 2 — read the work graph
+
+When the worker finishes, everything it did is in the bead store and the rig repo.
+
+```bash
+# the bead, now CLOSED, with the worker's report in its notes
+docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'
+
+# the four step-beads (survey/implement/verify/report) the formula created
+docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
+```
+
+And confirm the actual change landed as a commit in the rig repo:
 
 ```bash
 docker compose exec city bash -lc 'cd /workspace/rigs/rig1 && git --no-pager log --oneline -3'
 ```
 
-### Run 3 — run a formula (the four-step recipe)
+You should see the worker's commit (e.g. `Add CONTRIBUTING.md note to rig1`) on
+top of the rig's initial commit, and a real `CONTRIBUTING.md` in the rig.
 
-A **formula** is a small graph of steps one agent walks in order. This prototype
-ships [`sf-small-task`](../pack/formulas/sf-small-task.toml):
+### Run 3 — understand and customize the formula
+
+The thing that made Run 1 work is the **formula** — a small graph of steps one
+agent walks in order. This prototype ships
+[`sf-small-task`](../pack/formulas/sf-small-task.toml):
 
 ```mermaid
 flowchart LR
   survey --> implement --> verify --> report
 ```
 
-Each box is a step the worker does in turn: understand the task, make the
-change, check its own diff, then commit and report back. Confirm the city sees
-it:
+Each box is a step the worker does in turn: understand the task, make the change,
+check its own diff, then commit and report back. Confirm the city sees it:
 
 ```bash
 docker compose exec city gc formula list      # sf-small-task should appear
 ```
 
-Create a task bead and **sling** it at the rig worker *with the formula
-attached* — this is the explicit, hand-driven version of what Run 1 did
-automatically (the rig's worker agent is `rig1/claude`):
-
-```bash
-docker compose exec city bash -lc '
-  cd /workspace/city &&
-  BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
-  gc sling rig1/claude "$BEAD" --on sf-small-task'
-```
-
-(Add `--dry-run` to the `gc sling` to preview the dispatch without routing it.)
-Then peek the `rig1/claude` session (id from `gc session list`) and watch it walk
-**survey → implement → verify → report**. When it finishes, `gc bd show
-<bead-id>` has the report and `git log` in the rig has the commit.
-
-> **Want to change the recipe?** Edit
-> [`pack/formulas/sf-small-task.toml`](../pack/formulas/sf-small-task.toml) —
-> each `[[steps]]` block is one node, and its `needs` list is the arrows into
-> it. Add a node, rebuild (`docker compose up -d --build`), and it shows up in
-> `gc formula list`. The formula file *is* the graph.
+**Want to change the recipe?** Edit
+[`pack/formulas/sf-small-task.toml`](../pack/formulas/sf-small-task.toml) — each
+`[[steps]]` block is one node, and its `needs` list is the arrows into it. Add a
+node, rebuild (`docker compose up -d --build`), and it shows up in
+`gc formula list`. The formula file *is* the graph. Then dispatch another task
+exactly as in Run 1 to watch your new recipe run.
 
 ---
 
