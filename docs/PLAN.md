@@ -136,22 +136,27 @@ Verified in a Docker-enabled sandbox (2026-06-06, `gc` built from gascity
   from a **separate container** on the compose network at `city:3307` (verified
   by a cross-container TCP connect) and is published to `127.0.0.1:3307`.
 
-**Live, real-token run (2026-06-07, gc 1.2.1):** with a real
-`CLAUDE_CODE_OAUTH_TOKEN` (+ the sandbox CA), agents authenticate and an
-**explicitly-slung** task runs end-to-end: `gc sling rig1/claude <bead> --on
-sf-small-task` spawns the `rig1/claude` worker, which walks survey → implement →
-verify → report, makes a real commit (`Add CONTRIBUTING.md note to rig1`), and
-closes the bead and its four step-beads. The formula path works.
+**Live, real-token run (2026-06-07, gc 1.2.1) — native dispatch works end to
+end.** Root cause of the earlier "nothing picks up the bead": `[[rigs]]` entries
+had no pack import, so the gastown **rig roles never expanded**
+(`[defaults.rig.imports]` is only a template consumed by `gc rig add`, which we
+don't run — we declare rigs statically). Fix: give each `[[rigs]]` its own
+`[rigs.imports.gastown]`. With that, `gc agent list` shows
+`rigN/gastown.{witness,refinery,polecat}`, and the native pipeline runs: the
+**mayor** routes a bead (`gc sling rigN/gastown.polecat`), the polecat pool
+auto-scales 0→1, the polecat claims + commits on a worktree branch, and the
+**refinery** merges it into the rig and closes the bead. Verified: a real
+`Add … description … README` commit (`542f2ef`) merged into `rig1` main, bead
+closed — no manual sling at the dispatch step.
 
-**Known limitation (human-guided by design):** there is **no autonomous
-dispatch** of rig-scope beads. A `gc bd create --rig rigN` bead lands in the rig
-scope, but the mayor's idle loop polls only the city scope, and per-rig workers
-are `min=0`, so an un-slung rig bead sits `open` indefinitely (and is invisible
-to a plain city-scope `gc bd list` — it must be listed with `--rig`). The
-operator dispatches work explicitly with `gc sling`. Wiring autonomous
-rig-bead→worker dispatch (a rig-watching order, or auto-spawning a worker for
-ready rig beads) is a follow-up; it is intentionally out of scope for a
-"100% human-guided" prototype.
+**One behavioral note:** the mayor *triages* — it does not blindly sling every
+open bead; it decides what's worth doing and otherwise waits for the operator (in
+the test it judged the bead spurious and waited). A single `gc session nudge` to
+the mayor made it route the bead and the pipeline fired. So hands-on dispatch is
+a `gc bd create` + (mayor picks it up, or `gc session nudge` / explicit
+`gc sling`). Making the mayor sling *every* open task bead unprompted would need
+a mayor-prompt/policy change or a routing order — a follow-up. Also: per-session
+`wake_budget` throttling delays agents materializing by a few minutes.
 
 ## How this maps onto v4
 

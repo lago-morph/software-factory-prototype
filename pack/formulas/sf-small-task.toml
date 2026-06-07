@@ -6,10 +6,10 @@ description) and runs it through survey -> implement -> verify -> report. It use
 only primitives this prototype ships (gc prime, gc bd, git, gc mail), so it is a
 good first formula to watch run by hand.
 
-Run it by slinging a task bead at a rig's worker, naming this formula. In this
-prototype the rig worker agent is `<rig>/claude`:
+Run it by slinging a task bead at a rig's polecat worker, naming this formula
+(the mayor also slings polecats this way when it routes work natively):
 
-    gc sling <rig>/claude <task-bead-id> --on sf-small-task
+    gc sling <rig>/gastown.polecat <task-bead-id> --on sf-small-task
 
 or pour it as a standalone molecule:
 

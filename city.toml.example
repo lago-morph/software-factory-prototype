@@ -48,10 +48,25 @@ max_timeout = "10m"
 # Rigs. Filesystem path bindings live in .gc/site.toml (machine-local), written
 # by the entrypoint. `prefix` is required so rig1/rig2 don't both auto-derive
 # the colliding "ri" bead prefix.
+#
+# Each rig needs its OWN [rigs.imports.gastown] to expand the gastown rig-scoped
+# agents (witness / refinery / polecat) onto it. `[defaults.rig.imports]` does
+# NOT do this for statically-declared rigs — it is only a template that the
+# `gc rig add` command copies into a rig at registration time, and we register
+# rigs statically (here + in .gc/site.toml) rather than via `gc rig add`. Without
+# the per-rig import, only the default `claude` + control-dispatcher come up, the
+# rig observer (witness) never runs, and the mayor has no polecat to dispatch
+# native work to.
 [[rigs]]
 name = "rig1"
 prefix = "r1"
 
+[rigs.imports.gastown]
+source = "github.com/gastownhall/gascity.git//examples/gastown/packs/gastown"
+
 [[rigs]]
 name = "rig2"
 prefix = "r2"
+
+[rigs.imports.gastown]
+source = "github.com/gastownhall/gascity.git//examples/gastown/packs/gastown"

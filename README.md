@@ -81,28 +81,40 @@ If you ever do have a pay-as-you-go API key instead, you can leave the OAuth
 token empty and set `ANTHROPIC_API_KEY=` in `.env` — but the subscription path
 is the default and what most people on Max will use.
 
-## Giving the city work (manual operation)
+## Giving the city work
 
-The city is **human-guided: you dispatch the work**. The mayor and the rest of
-the fleet do housekeeping; they do **not** auto-pick-up tasks you create in a
-rig. The reliable, verified way to get a task done is to create a bead and then
-**sling** it at the rig's worker with a formula attached — that both routes the
-bead and spawns the worker:
+You hand the city a task as a **bead**; the native gastown agents take it from
+there. Create it from the **city** dir with `--rig`:
 
 ```bash
-docker compose exec city bash -lc '
-  cd /workspace/city &&
-  BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note" --json | jq -r .id) &&
-  gc sling rig1/claude "$BEAD" --on sf-small-task'
+docker compose exec city bash -lc \
+  'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1"'
 ```
 
-The `rig1/claude` worker then walks the `sf-small-task` formula
-(survey → implement → verify → report), commits, and closes the bead.
+The **mayor** (the coordinator) triages open work and routes the actionable
+beads to the rig's **polecat** worker; the polecat does the task and commits on a
+worktree branch, and the **refinery** merges that branch into the rig. This whole
+pipeline — route → polecat works → refinery merges → bead closes — is automatic
+once the mayor routes the bead. (Verified end-to-end: a real
+`Add … description … README` commit merged into `rig1` main with the bead closed.)
 
-> **A bead you create but don't sling just sits `open` in the rig scope — it is
-> not lost and nothing works it.** Plain `gc bd list` shows the *city* scope, so
-> a rig bead won't appear there (this is why it can look like it "disappeared").
-> List rig beads explicitly:
+Two practical notes:
+
+- **The mayor *triages* — it won't necessarily sling every bead.** If it decides
+  your bead isn't worth doing (or it's slow to wake — sessions are start-throttled),
+  give it a push, or route the bead yourself:
+
+  ```bash
+  docker compose exec city gc session list                    # find the gastown.mayor id
+  docker compose exec city gc session nudge <mayor-id>        # tell it to route open work
+  # …or dispatch explicitly:
+  docker compose exec city bash -lc \
+    'cd /workspace/city && gc sling rig1/gastown.polecat <bead-id> --on sf-small-task'
+  ```
+
+- **Plain `gc bd list` shows the *city* scope**, so a rig bead won't appear there
+  (this is why an un-routed bead can look like it "disappeared" — it's just sitting
+  `open` in the rig). List rig beads explicitly:
 
 ```bash
 docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
