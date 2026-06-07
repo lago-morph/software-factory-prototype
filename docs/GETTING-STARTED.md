@@ -18,9 +18,10 @@ of **agents**, a set of **rigs**, and a **bead store**.
 
 ```mermaid
 flowchart LR
-  you([You]) -->|gc sling + formula| worker[rig1/claude worker]
-  worker -->|reads/writes| store[(Bead store)]
-  worker -->|edits + commits| rig[Rig repo]
+  you([You]) -->|gc bd create| store[(Bead store)]
+  mayor[Mayor] -->|triages + routes| polecat[Polecat worker]
+  polecat -->|edits + commits branch| rig[Rig repo]
+  refinery[Refinery] -->|merges branch| rig
 ```
 
 The five words you need:
@@ -33,12 +34,18 @@ The five words you need:
 | **Agent** | A long-running `claude` session with a role and a scope. The city runs one per role, each in its own tmux pane. |
 | **Formula** | A small recipe: a few steps wired into a graph that one agent walks top to bottom. |
 
-**This prototype is human-driven: *you* dispatch the work.** You create a bead
-and **sling** it at a rig's worker (`gc sling`), which then does the task and
-records the result back in the bead store. The mayor and the other standing
-agents do housekeeping — they do **not** auto-pick-up tasks you create in a rig.
-A bead you create but never sling just sits `open` in the rig; nothing works it
-until you sling it.
+**How work flows (native gastown).** You create a bead. The **mayor** (the
+coordinator) triages the open beads and routes the actionable ones to a rig's
+**polecat** worker; the polecat does the task and commits on a worktree branch,
+and the **refinery** merges that branch into the rig and closes the bead. Once
+the mayor routes a bead, the rest is automatic.
+
+> The mayor *triages* — it decides what's worth doing and otherwise waits for
+> you, so it may not sling a given bead on its own (and agents are start-throttled,
+> so they take a few minutes to wake). To push a specific bead, **nudge** the
+> mayor (`gc session nudge <mayor-id>`) or route it yourself with `gc sling`
+> (both shown in the tutorial below). A created-but-unrouted bead just sits
+> `open` in the rig — it's not lost; `gc bd list --rig rig1` shows it.
 
 ---
 
@@ -98,9 +105,11 @@ docker compose exec city gc status
 ```
 
 You should see the city's agents — `gastown.mayor` (the coordinator),
-`gastown.deacon` and `gastown.boot` (housekeeping), `gastown.dog`, and per-rig
-agents (`rig1/claude`, `rig2/claude`, plus each rig's control-dispatcher). The
-per-rig `claude` agent is the worker that does a rig's tasks.
+`gastown.deacon` and `gastown.boot` (housekeeping), `gastown.dog`, and the
+per-rig gastown roles: `rig1/gastown.witness` (watches the rig),
+`rig1/gastown.polecat` (the worker that does tasks), and `rig1/gastown.refinery`
+(merges finished work) — likewise for `rig2`. The polecat is `min=0`, so it only
+appears once there's work routed to it.
 
 ---
 
@@ -115,8 +124,8 @@ flowchart TD
   ctrl[gc controller] --> tmux[tmux server -L software-factory-v4]
   tmux --> p1[pane: gastown.mayor — claude]
   tmux --> p2[pane: gastown.deacon — claude]
-  tmux --> p3[pane: rig1/claude — claude]
-  tmux --> p4[pane: rig2/claude — claude]
+  tmux --> p3[pane: rig1/gastown.witness — claude]
+  tmux --> p4[pane: rig1/gastown.polecat — claude]
 ```
 
 **List the sessions** (one per agent — note the short `ID` column, e.g. `sfv-c2d`):
@@ -160,47 +169,52 @@ first time you try a new kind of task, something will be off.** That's normal �
 the win is how cheaply you can look at a pane, adjust, and try again, not whether
 it works on the first shot.
 
-### Run 1 — dispatch a task (create **and** sling it)
+### Run 1 — give the city a task
 
-You drive the work: create a bead, then **sling** it at the rig's worker with the
-`sf-small-task` formula attached. The sling does two things — it routes the bead
-*and* spawns the `rig1/claude` worker (which sits at zero until there's work for
-it). Run `gc bd` from the **city** dir and name the rig with `--rig`:
+Create a bead from the **city** dir with `--rig`:
+
+```bash
+docker compose exec city bash -lc \
+  'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1"'
+```
+
+The mayor triages open work and routes the actionable beads to a polecat worker;
+the polecat does the task and commits on a branch, and the refinery merges it
+into the rig. **But the mayor decides what's worth doing and may pass on your
+bead** (and agents are start-throttled, so they take a few minutes to wake). If
+your bead isn't moving after a few minutes, give the mayor a push:
+
+```bash
+docker compose exec city gc session list                   # find the gastown.mayor id
+docker compose exec city gc session nudge <mayor-id>       # tell it to route open work
+```
+
+Or route the bead yourself — same outcome, no waiting on the mayor's judgment.
+This both sets `gc.routed_to` and spawns the worker:
 
 ```bash
 docker compose exec city bash -lc '
   cd /workspace/city &&
   BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
-  echo "dispatched $BEAD" &&
-  gc sling rig1/claude "$BEAD" --on sf-small-task'
+  gc sling rig1/gastown.polecat "$BEAD" --on sf-small-task'
 ```
 
-(Add `--dry-run` to the `gc sling` to preview the dispatch without routing it.)
-
-Now watch it work. The `rig1/claude` worker appears in `gc session list` within
-~20s; peek it and watch it walk **survey → implement → verify → report**:
+(Add `--dry-run` to the `gc sling` to preview without routing.) Either way, watch
+it work — the `rig1/gastown.polecat` worker appears in `gc session list` once
+routed; peek it and watch it walk **survey → implement → verify → report**:
 
 ```bash
-docker compose exec city gc session list                      # find the rig1/claude session id
-docker compose exec city gc session peek <rig1-claude-id>     # watch it work
+docker compose exec city gc session list                       # find the polecat session id
+docker compose exec city gc session peek <polecat-session-id>  # watch it work
+docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'   # poll until CLOSED
 ```
 
-Poll the bead until it closes:
-
-```bash
-docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'
-```
-
-> **Why not just `gc bd create` and wait?** Because nothing auto-dispatches it.
-> A bead you create but don't sling stays `open` in the rig scope forever — it is
-> **not** lost, but no agent picks it up. (And plain `gc bd list` shows the
-> *city* scope, so a rig bead won't even appear there — use `gc bd list --rig
-> rig1`. That mismatch is why an un-slung bead can look like it "disappeared.")
-> The mayor/deacon do housekeeping, not your task dispatch. **You** sling.
->
-> A live event stream (`gc events --follow`) needs the supervisor API (`gc
-> supervisor start`), which this standalone single-container deployment doesn't
-> run — so `gc session peek` + polling `gc bd show` is how you watch progress.
+> **Where did my bead go?** Plain `gc bd list` shows the *city* scope, so a rig
+> bead won't appear there — use `gc bd list --rig rig1`. An un-routed bead just
+> sits `open` in the rig (not lost); the mayor either routes it or you nudge/sling
+> it. A live event stream (`gc events --follow`) needs the supervisor API (`gc
+> supervisor start`), which this standalone deployment doesn't run — so
+> `gc session peek` + polling `gc bd show` is how you watch progress.
 
 ### Run 2 — read the work graph
 
