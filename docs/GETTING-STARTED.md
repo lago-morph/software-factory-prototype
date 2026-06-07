@@ -95,9 +95,10 @@ When the controller settles, check the fleet:
 docker compose exec city gc status
 ```
 
-You should see the city's agents — a **mayor** (the coordinator), a **deacon**
-and **boot** (housekeeping), and per-rig roles (**witness**, **refinery**,
-**polecat**). They start in a quiet/reserved state and wake when there's work.
+You should see the city's agents — `gastown.mayor` (the coordinator),
+`gastown.deacon` and `gastown.boot` (housekeeping), `gastown.dog`, and per-rig
+agents (`rig1/claude`, `rig2/claude`, plus each rig's control-dispatcher). The
+per-rig `claude` agent is the worker that does a rig's tasks.
 
 ---
 
@@ -110,39 +111,43 @@ container. The controller starts them, watches them, and restarts any that die.
 ```mermaid
 flowchart TD
   ctrl[gc controller] --> tmux[tmux server -L software-factory-v4]
-  tmux --> p1[pane: mayor — claude]
-  tmux --> p2[pane: deacon — claude]
-  tmux --> p3[pane: rig1 polecat — claude]
-  tmux --> p4[pane: rig2 polecat — claude]
+  tmux --> p1[pane: gastown.mayor — claude]
+  tmux --> p2[pane: gastown.deacon — claude]
+  tmux --> p3[pane: rig1/claude — claude]
+  tmux --> p4[pane: rig2/claude — claude]
 ```
 
-**List the running sessions** (one per agent):
+**List the sessions** (one per agent — note the short `ID` column, e.g. `sfv-c2d`):
 
 ```bash
 docker compose exec city gc session list
-# or, straight from tmux:
-docker compose exec city tmux -L software-factory-v4 ls
 ```
 
-**Peek at what one agent is doing** without disturbing it — this prints a
-snapshot of its pane:
+**Peek at what one agent is doing** without disturbing it — pass the session
+**id** from the list:
 
 ```bash
-docker compose exec city tmux -L software-factory-v4 capture-pane -t <session-name> -p
+docker compose exec city gc session peek <session-id>      # e.g. sfv-c2d (the mayor)
 ```
 
-**Sit on an agent's shoulder live** — attach to its pane and watch it think in
-real time:
+**Sit on an agent's shoulder live** and watch it think in real time:
 
 ```bash
-docker compose exec -it city tmux -L software-factory-v4 attach -t <session-name>
+docker compose exec -it city gc session attach <session-id>
 ```
 
 To leave without killing the agent, **detach**: press `Ctrl-b` then `d`. (Don't
 type `exit` — that would end the agent's session.)
 
-The `<session-name>` values come from `gc session list`. Names follow the role
-(for example the mayor, or a rig's polecat worker).
+> **Going through raw tmux instead?** The tmux socket is `software-factory-v4`,
+> but tmux session names aren't the dotted names `gc session list` prints — gc
+> maps `.`→`__` and `/`→`--`. So `gastown.mayor` is the tmux target
+> `gastown__mayor`, and `rig1/control-dispatcher` is `rig1--control-dispatcher`:
+> ```bash
+> docker compose exec city tmux -L software-factory-v4 ls
+> docker compose exec city tmux -L software-factory-v4 capture-pane -t gastown__mayor -p
+> ```
+> The `gc session peek`/`attach` commands above avoid this translation, so prefer them.
 
 ---
 
@@ -155,34 +160,44 @@ it works on the first shot.
 
 ### Run 1 — give the city a one-line task
 
-Create a bead in a rig's scope. The mayor watches for open beads and routes
-them.
+Create a bead scoped to a rig. Run `gc bd` from the **city** dir and name the rig
+with `--rig` (running `gc bd` from the rig dir fails — gc resolves the city from
+`/workspace/city`). The mayor watches for open beads and routes them.
 
 ```bash
 docker compose exec city bash -lc \
-  'cd /workspace/rigs/rig1 && gc bd create --type=task "Add a one-line description to the top of README.md"'
+  'cd /workspace/city && gc bd create --rig rig1 --type=task "Add a one-line description to the top of README.md"'
 ```
 
-Now watch it move. In one terminal, follow the event stream:
+Now watch it move. Poll the bead's status in one terminal:
 
 ```bash
-docker compose exec city gc events --follow
+docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
 ```
 
-In another, peek at the mayor's pane (find its name with `gc session list`) to
-see it notice the bead and dispatch a worker. The worker wakes in the rig,
-edits the file, commits, and marks the bead done.
+and peek the mayor's pane (get its id from `gc session list`) to see it notice
+the bead and dispatch the rig worker (`rig1/claude`), which edits the file,
+commits, and marks the bead done:
+
+```bash
+docker compose exec city gc session peek <mayor-session-id>    # e.g. sfv-c2d
+```
+
+> A live event stream (`gc events --follow`) needs the machine-wide supervisor
+> running (`gc supervisor start`); this single-container deployment runs a
+> standalone controller, so polling `gc bd list` + `gc session peek` is the
+> simplest way to watch progress here.
 
 ### Run 2 — read the work graph
 
-Everything the city did is in the bead store. Inspect it:
+Everything the city did is in the bead store. Inspect it from the city dir:
 
 ```bash
 # all beads in rig1's scope
-docker compose exec city bash -lc 'cd /workspace/rigs/rig1 && gc bd list'
+docker compose exec city bash -lc 'cd /workspace/city && gc bd list --rig rig1'
 
-# the full detail of one bead, including the worker's notes
-docker compose exec city bash -lc 'cd /workspace/rigs/rig1 && gc bd show <bead-id>'
+# the full detail of one bead, including the worker's notes (id looks like r1-ep8)
+docker compose exec city bash -lc 'cd /workspace/city && gc bd show <bead-id>'
 ```
 
 And confirm the actual change landed in the rig repo:
@@ -209,17 +224,19 @@ it:
 docker compose exec city gc formula list      # sf-small-task should appear
 ```
 
-Create a task bead and **sling** it at a worker *with the formula attached* —
-this is the explicit, hand-driven version of what Run 1 did automatically:
+Create a task bead and **sling** it at the rig worker *with the formula
+attached* — this is the explicit, hand-driven version of what Run 1 did
+automatically (the rig's worker agent is `rig1/claude`):
 
 ```bash
 docker compose exec city bash -lc '
-  cd /workspace/rigs/rig1 &&
-  BEAD=$(gc bd create --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
-  gc sling rig1/polecat "$BEAD" --on sf-small-task'
+  cd /workspace/city &&
+  BEAD=$(gc bd create --rig rig1 --type=task "Add a CONTRIBUTING note to rig1" --json | jq -r .id) &&
+  gc sling rig1/claude "$BEAD" --on sf-small-task'
 ```
 
-Then attach to that polecat's pane (from `gc session list`) and watch it walk
+(Add `--dry-run` to the `gc sling` to preview the dispatch without routing it.)
+Then peek the `rig1/claude` session (id from `gc session list`) and watch it walk
 **survey → implement → verify → report**. When it finishes, `gc bd show
 <bead-id>` has the report and `git log` in the rig has the commit.
 
@@ -237,7 +254,7 @@ Then attach to that polecat's pane (from `gc session list`) and watch it walk
 |---|---|---|
 | Agents do nothing / error immediately | `CLAUDE_CODE_OAUTH_TOKEN` missing or stale in `.env` | Re-run `claude setup-token`, update `.env`, `docker compose restart city`. |
 | Build is very slow the first time | `gc` is compiled from source | Expected once; the image is cached afterward. |
-| An agent's pane looks stuck | The agent is waiting or wedged | Peek with `capture-pane`; the controller restarts dead agents on its own. |
+| An agent's pane looks stuck | The agent is waiting or wedged | Peek with `gc session peek <id>`; the controller restarts dead agents on its own. |
 | You want a clean slate | Old bead/rig state in the volume | `docker compose down -v`, then `up` again. |
 | Bead store is **extremely slow** / "tries native store over and over" | State on a Windows/macOS host bind mount (Dolt crawls on Docker Desktop's drvfs/9p) | Make sure the compose `volumes:` uses the named volume `sfv4-workspace`, not `./workspace`. This is the default; don't change it back. |
 

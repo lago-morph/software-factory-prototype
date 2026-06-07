@@ -107,9 +107,10 @@ provision_rig() {
 # ${name}
 
 Empty local rig provisioned by the Software Factory v4 prototype. Put a project
-here (or point RIG*_URL at a real repo in .env) and give the city work with:
+here (or point RIG*_URL at a real repo in .env) and give the city work with
+(run gc bd from the city dir, naming this rig with --rig):
 
-    docker compose exec city bash -lc 'cd /workspace/rigs/${name} && gc bd create --type=task "your task"'
+    docker compose exec city bash -lc 'cd /workspace/city && gc bd create --rig ${name} --type=task "your task"'
 RIGEOF
     git -C "$dest" add -A
     git -C "$dest" -c user.email=city@example.com -c user.name="Software Factory" \
