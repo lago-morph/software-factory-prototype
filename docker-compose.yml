@@ -8,8 +8,14 @@
 # store, and the agent fleet (claude in tmux). The bead store listens on
 # city:3307 inside the compose network and is published to 127.0.0.1:3307 on the
 # host, so anything in the compose project (or a local SQL client) can reach it
-# by host/port. Its database files live under ./workspace and are NEVER synced to
+# by host/port. Its database files live in a named volume and are NEVER synced to
 # any remote.
+#
+# IMPORTANT (Windows/macOS): the runtime state lives in a NAMED VOLUME, not a
+# host bind mount. Dolt does many small reads/writes + file locking, which is
+# extremely slow on Docker Desktop's host-mount filesystem (drvfs/9p). The named
+# volume lives in Docker's own Linux VM (ext4) and is fast. Do NOT switch this to
+# `./workspace:/workspace` on Windows/macOS or the bead store will crawl.
 
 services:
   city:
@@ -34,17 +40,27 @@ services:
       # claude --dangerously-skip-permissions refuses to run as root unless this
       # is set. The container is itself an isolated environment, so it's safe.
       - IS_SANDBOX=1
+      # Skip gc's in-process "native" bead store and go straight to the bd path
+      # (the one the gastown pack uses anyway). Without this, gc retries the
+      # native store on every operation, each retry paying a preflight timeout
+      # and logging `native_store_unavailable`. Forcing the bd path removes that
+      # churn and the warning.
+      - GC_BEADS_FORCE_FALLBACK=1
     # Bead store (gc-managed Dolt) — reachable by the host at 127.0.0.1:3307.
     ports:
       - "127.0.0.1:3307:3307"
     volumes:
       # All city state — city.toml, .gc runtime state, the Dolt bead-store data,
-      # and the rigs — lives here. Survives `restart`; re-created on a cold
-      # `docker compose up` after `down`. This directory is local and never synced.
-      - ./workspace:/workspace
+      # and the rigs — lives in this named volume (Docker-VM ext4, fast). Survives
+      # `restart` and `down`; wipe with `docker compose down -v`. Local, never synced.
+      - sfv4-workspace:/workspace
       # Uncomment to live-edit pack content (then no rebuild needed for prompts):
       # - ./pack:/pack
     init: true          # tini reaps the short-lived children bd/dolt spawn
     stdin_open: true
     tty: true
     restart: unless-stopped
+
+volumes:
+  sfv4-workspace:
+

@@ -238,7 +238,8 @@ Then attach to that polecat's pane (from `gc session list`) and watch it walk
 | Agents do nothing / error immediately | `CLAUDE_CODE_OAUTH_TOKEN` missing or stale in `.env` | Re-run `claude setup-token`, update `.env`, `docker compose restart city`. |
 | Build is very slow the first time | `gc` is compiled from source | Expected once; the image is cached afterward. |
 | An agent's pane looks stuck | The agent is waiting or wedged | Peek with `capture-pane`; the controller restarts dead agents on its own. |
-| You want a clean slate | Old bead/rig state in `./workspace` | `docker compose down`, then delete `./workspace`, then `up` again. |
+| You want a clean slate | Old bead/rig state in the volume | `docker compose down -v`, then `up` again. |
+| Bead store is **extremely slow** / "tries native store over and over" | State on a Windows/macOS host bind mount (Dolt crawls on Docker Desktop's drvfs/9p) | Make sure the compose `volumes:` uses the named volume `sfv4-workspace`, not `./workspace`. This is the default; don't change it back. |
 
 ---
 
@@ -248,15 +249,15 @@ Every agent is a live `claude` session against your subscription, and a few run
 continuously for housekeeping. When you're done working:
 
 ```bash
-docker compose stop city      # pause everything; your state stays in ./workspace
+docker compose stop city      # pause everything; your state stays in the volume
 docker compose start city      # resume later, right where you left off
 ```
 
 | Command | Effect |
 |---|---|
 | `docker compose stop city` | Pause the fleet; keep all state. |
-| `docker compose down` | Stop and remove the container; `./workspace` (incl. the bead store) survives. |
-| `docker compose down` + `rm -rf ./workspace` | Full reset — wipes the bead store and rigs. |
+| `docker compose down` | Stop and remove the container; the `sfv4-workspace` volume (incl. the bead store) survives. |
+| `docker compose down -v` | Full reset — wipes the bead store and rigs. |
 
-The bead store lives under `./workspace` and is never pushed anywhere, so
-stopping the city never loses your work; it just goes quiet.
+The bead store lives in the `sfv4-workspace` named volume and is never pushed
+anywhere, so stopping the city never loses your work; it just goes quiet.
