@@ -145,11 +145,16 @@ provision_rig "$RIG2_NAME" "$RIG2_URL" "$RIG2_BRANCH"
 
 cd "$CITY_DIR"
 
-# ---------- 5. install pack imports (gastown + bd) ----------
-if [ ! -f "${CITY_DIR}/packs.lock" ]; then
-  log "installing pack imports"
-  gc import install 2>&1 | sed 's/^/[gc import] /' || { log "gc import install failed"; exit 1; }
-fi
+# ---------- 5. install/refresh pack imports (gastown + bd) ----------
+# Run unconditionally. `gc import install` is gc's own recovery for a missing
+# pack cache, and gating it on packs.lock alone is unsafe: a reused or partially
+# initialized /workspace volume can have packs.lock present but the runtime pack
+# cache gone, after which `gc start` crash-loops with "synthetic cache is invalid
+# ... missing bundled pack cache marker; run gc import install". Running it on
+# every start lets gc rebuild the cache when it's missing (and no-op when already
+# satisfied), instead of skipping the recovery and crash-looping.
+log "installing/refreshing pack imports"
+gc import install 2>&1 | sed 's/^/[gc import] /' || { log "gc import install failed"; exit 1; }
 
 # ---------- 6. publish the bead store on a stable host/port ----------
 # gc manages the Dolt SQL server on a deterministic, loopback-only port. Bridge
