@@ -33,9 +33,11 @@ RUN apt-get update -qq \
  && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# Pin the Gas City source. Override with --build-arg GASCITY_REF=<sha|branch>.
+# Pin the Gas City source to a release tag (not main). Override with
+# --build-arg GASCITY_REF=<tag|sha|branch>. v1.2.1 is the current release; its
+# deps.env pins the matching bd (v1.0.4) and dolt (2.1.0) used below.
 ARG GASCITY_REPO=https://github.com/gastownhall/gascity.git
-ARG GASCITY_REF=main
+ARG GASCITY_REF=v1.2.1
 
 WORKDIR /src
 RUN git clone --filter=blob:none "${GASCITY_REPO}" . \
@@ -53,10 +55,10 @@ RUN make build \
 FROM ubuntu:24.04
 
 ARG TARGETARCH=amd64
-# Dolt release — PINNED (not "latest"). 2.1.4 is verified-good with this gc; a
-# newer "latest" once removed `sql-server --user`, so pin for reproducibility.
-ARG DOLT_VERSION=2.1.4
-# bd (Beads CLI) release. Proven-compatible with gc as of the gascity prototype.
+# Dolt + bd releases — PINNED to the versions gascity v1.2.1's deps.env declares
+# as the matching set (not "latest"; a newer dolt once removed `sql-server
+# --user`). Keep these in lockstep with GASCITY_REF.
+ARG DOLT_VERSION=2.1.0
 ARG BD_VERSION=1.0.4
 ARG BD_REPO=gastownhall/beads
 # Node major version (installed via NodeSource so it stays a current 22.x LTS).
