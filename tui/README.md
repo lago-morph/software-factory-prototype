@@ -64,7 +64,11 @@ before merge + image rebuild** — a human gate before the container modifies th
 files that build it (the same review ethos as the backbone's C52/C53 gate).
 Leave `RIG1_URL` / `RIG_PUSH_TOKEN` empty for the normal self-contained demo.
 
-> **Not yet verified in a Docker environment.** The image wiring (python3,
+> **Not yet exercised — but it can be, right here.** The image wiring (python3,
 > `sftui` shim, the `tui/` bake) and the build-rig credential plumbing were
-> authored from source and have not been exercised with `docker compose up` +
-> a real subscription token. Verify on a Docker host before relying on them.
+> authored from source and not yet run. **Docker is available in the sandbox** —
+> start the daemon with `sudo dockerd >/tmp/dockerd.log 2>&1 &` (a SessionStart
+> hook does this automatically). The full build + live-test recipe (CA injection
+> for the build proxy, the real token, compose override) is in
+> [`../docs/HANDOFF.md`](../docs/HANDOFF.md) §3. Build and run the real stack to
+> verify before relying on these.
