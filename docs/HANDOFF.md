@@ -148,6 +148,14 @@ files (they're laptop-clean); recreate it for testing only.
    RUN update-ca-certificates
    ```
    Build with `-f Dockerfile.verify -t software-factory-v4:latest`.
+   - **npm uses its own CA bundle**, so the `update-ca-certificates` above does
+     NOT fix the `npm install -g @anthropic-ai/claude-code` step — it fails
+     `SELF_SIGNED_CERT_IN_CHAIN`. Also add
+     `ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` in the runtime
+     stage before that npm step in `Dockerfile.verify`.
+   - **Docker Hub may 429** on `FROM ubuntu:24.04` (rate limit). Pull the same
+     image from a mirror (e.g. the AWS ECR public ubuntu mirror) and retag it
+     locally as `ubuntu:24.04` before building.
 3. **Sandbox compose override** (so agents reach api.anthropic.com): write
    `docker-compose.sandbox.yml` adding to the `city` service:
    `environment: NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt`,

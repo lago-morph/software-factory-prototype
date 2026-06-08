@@ -3,6 +3,19 @@
 Conventions for agents working in this repo, loaded via [`CLAUDE.md`](./CLAUDE.md).
 Keep this short and current.
 
+## Always test fixes — no exceptions, ever
+
+**Every fix and every change MUST be tested by executing it against the real
+running system before you claim it works, mark it "verified", or merge it. No
+exceptions. Ever.** "Reasoned from the source / from the error message" is a
+hypothesis, not a test. `bash -n`, `py_compile`, and linters check syntax, not
+behavior — they are not tests of a fix. In this Dockerized repo, testing a fix
+means building the image and running the actual `docker compose` stack (see the
+sandbox recipe below), reproducing the original failure, and confirming the fix
+removes it. Docker is available here, so "I couldn't test it" is almost never
+true; if a runtime genuinely cannot be exercised, say so explicitly and do NOT
+claim the change works.
+
 ## The sandbox HAS Docker — start the daemon, don't assume it's absent
 
 This repo is a Dockerized Gas City deployment; building and testing it needs
