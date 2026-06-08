@@ -23,6 +23,15 @@ docker compose exec city sftui
 (`sftui` is a shim for `python3 /opt/tui/beadview.py`.) It is **stdlib Python +
 curses** — no pip, no network.
 
+**After pulling new TUI changes, rebuild the image** so the updated viewer is
+baked in — the file is copied in at image-build time, not bind-mounted:
+
+```bash
+git pull
+docker compose up -d --build      # rebuild + restart the city service
+docker compose exec city sftui    # run the viewer
+```
+
 > **Status: chunk-1 built and verified in-sandbox.** `beadview.py` here is the
 > v0.1 produced by the prototype's **own build loop** (the dogfood below) and
 > verified end-to-end: the image builds, `sftui --dump` lists beads across all
@@ -61,6 +70,10 @@ Then drive the chunk-1 bead from the city dir:
 ```bash
 docker compose exec city bash -lc 'cd /workspace/city && gc bd create --rig rig1 --type=task "<chunk-1 prompt>"'
 ```
+
+The exact chunk-1 prompt body is stored at
+[`prompts/chunk-1-beads-browser.md`](prompts/chunk-1-beads-browser.md) (verbatim
+and re-runnable); later rungs get their own prompt files there.
 
 The build is bounded to the `tui/` directory and its PR is **operator-reviewed
 before merge + image rebuild** — a human gate before the container modifies the
